@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mi Clima</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+:root{--bg:#f4f6f8;--card:#ffffff;--text:#1d2630;--muted:#5b6876;--accent:#1565c0}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--bg:#0f141a;--card:#1a222c;--text:#e8edf2;--muted:#9aa7b4;--accent:#4d9cff}}
+:root[data-theme="dark"]{--bg:#0f141a;--card:#1a222c;--text:#e8edf2;--muted:#9aa7b4;--accent:#4d9cff}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,Roboto,sans-serif}
+header{padding:12px 16px;display:flex;justify-content:space-between;align-items:center;gap:10px}
+header h1{font-size:20px;margin:0}
+button{font:inherit;border:0;border-radius:10px;padding:10px 14px;background:var(--accent);color:#fff;cursor:pointer}
+#map{height:55vh;width:100%;min-height:260px}
+.panel{background:var(--card);margin:12px 16px;padding:14px;border-radius:14px}
+.radar-bar{display:flex;gap:10px;align-items:center}
+.radar-bar input{flex:1}
+.small{font-size:13px;color:var(--muted);margin-top:8px}
+table{width:100%;border-collapse:collapse;font-size:14px;margin-top:8px}
+td,th{padding:6px 4px;text-align:right;border-bottom:1px solid rgba(127,127,127,.2)}
+td:first-child,th:first-child{text-align:left}
+</style>
+</head>
+<body>
+<header>
+  <h1>Mi Clima</h1>
+  <button id="btnLoc" type="button">Mi ubicación</button>
+</header>
+
+<div id="map"></div>
+
+<div class="panel">
+  <div class="radar-bar">
+    <button id="btnPlay" type="button">⏸</button>
+    <input id="slider" type="range" min="0" max="0" value="0">
+  </div>
+  <div id="radarTime" class="small">Cargando radar…</div>
+</div>
+
+<div class="panel">
+  <strong>Lluvia próximas 24 h (mm por hora)</strong>
+  <div id="forecast" class="small">Cargando pronóstico…</div>
+</div>
+
+<div class="panel small">
+  Radar: RainViewer (Weather data by RainViewer). Pronóstico: Open-Meteo (CC BY 4.0). Mapa: © OpenStreetMap.
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const DEFAULT_POS = { lat: -32.89, lon: -68.84 }; // Mendoza capital
+let pos = { ...DEFAULT_POS };
+let map, marker;
+let radarLayers = [];
+let pastCount = 0;
+let idx = 0;
+let playing = true;
+let timer = null;
+
+const btnPlay = document.getElementById("btnPlay");
+const slider = document.getElementById("slider");
+const radarTime = document.getElementById("radarTime");
+const forecastEl = document.getElementById("forecast");
+const btnLoc = document.getElementById("btnLoc");
+
+function showFrame(i) {
+  try {
+    if (!radarLayers.length) return;
+    idx = i;
+    radarLayers.forEach((l, k) => l.setOpacity(k === i ? 0.65 : 0));
+    slider.value = i;
+    const t = new Date(radarLayers[i].frameTime * 1000);
+    const hora = t.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" });
+    const tipo = i >= pastCount ? " (pronóstico de radar)" : "";
+    radarTime.textContent = `Radar ${hora}${tipo} · ${i + 1}/${radarLayers.length}`;
+  } catch (e) {
+    radarTime.textContent = "Error al mostrar el radar: " + e.message;
+  }
+}
+
+async function loadRadar() {
+  try {
+    const r = await fetch("https://api.rainviewer.com/public/weather-maps.json");
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    const d = await r.json();
+    const past = (d.radar && d.radar.past) || [];
+    const nowcast = (d.radar && d.radar.nowcast) || [];
+    const list = [...past, ...nowcast];
+    if (!list.length) throw new Error("no llegaron imágenes de radar");
+
+    radarLayers.forEach(l => map.removeLayer(l));
+    radarLayers = [];
+    pastCount = past.length;
+
+    list.forEach(f => {
+      const layer = L.tileLayer(`${d.host}${f.path}/256/{z}/{x}/{y}/2/1_1.png`, {
+        opacity: 0,
+        maxNativeZoom: 7,
+        maxZoom: 12,
+        attribution: "Radar © RainViewer"
+      });
+      layer.frameTime = f.time;
+      layer.addTo(map);
+      radarLayers.push(layer);
+    });
+
+    slider.max = radarLayers.length - 1;
+    showFrame(pastCount - 1 >= 0 ? pastCount - 1 : 0);
+  } catch (e) {
+    radarTime.textContent = "No pude cargar el radar: " + e.message;
+  }
+}
+
+function startAnimation() {
+  if (timer) clearInterval(timer);
+  timer = setInterval(() => {
+    if (playing && radarLayers.length) showFrame((idx + 1) % radarLayers.length);
+  }, 700);
+}
+
+async function loadForecast() {
+  try {
+    const url = "https://api.open-meteo.com/v1/forecast" +
+      `?latitude=${pos.lat}&longitude=${pos.lon}` +
+      "&hourly=precipitation&models=gfs_seamless,ecmwf_ifs025,icon_seamless" +
+      "&timezone=auto&forecast_days=2";
+    const r = await fetch(url);
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    const d = await r.json();
+    const hourly = d.hourly || {};
+    const times = hourly.time || [];
+
+    const modelos = [["GFS", "gfs_seamless"], ["ECMWF", "ecmwf_ifs025"], ["ICON", "icon_seamless"]]
+      .filter(([n, k]) => Array.isArray(hourly["precipitation_" + k]));
+    if (!modelos.length || !times.length) throw new Error("datos incompletos");
+
+    const ahora = Date.now() - 3600 * 1000;
+    let inicio = times.findIndex(t => new Date(t).getTime() >= ahora);
+    if (inicio < 0) inicio = 0;
+
+    let filas = "";
+    let maximo = 0;
+    for (let i = inicio; i < inicio + 24 && i < times.length; i++) {
+      const celdas = modelos.map(([n, k]) => {
+        const v = hourly["precipitation_" + k][i];
+        if (typeof v === "number" && v > maximo) maximo = v;
+        return typeof v === "number" ? v.toFixed(1) : "-";
+      });
+      filas += `<tr><td>${times[i].slice(11, 16)}</td>${celdas.map(c => `<td>${c}</td>`).join("")}</tr>`;
+    }
+    const cabecera = `<tr><th>Hora</th>${modelos.map(([n]) => `<th>${n}</th>`).join("")}</tr>`;
+    forecastEl.innerHTML =
+      `<p>Máximo esperado en 24 h: <b>${maximo.toFixed(1)} mm/h</b> (de cualquiera de los modelos)</p>` +
+      `<table>${cabecera}${filas}</table>`;
+  } catch (e) {
+    forecastEl.textContent = "No pude cargar el pronóstico: " + e.message;
+  }
+}
+
+btnPlay.addEventListener("click", () => {
+  playing = !playing;
+  btnPlay.textContent = playing ? "⏸" : "▶";
+});
+
+slider.addEventListener("input", () => {
+  playing = false;
+  btnPlay.textContent = "▶";
+  showFrame(Number(slider.value));
+});
+
+btnLoc.addEventListener("click", () => {
+  if (!navigator.geolocation) {
+    forecastEl.textContent = "Este navegador no permite leer la ubicación.";
+    return;
+  }
+  navigator.geolocation.getCurrentPosition(
+    p => {
+      pos = { lat: p.coords.latitude, lon: p.coords.longitude };
+      map.setView([pos.lat, pos.lon], 8);
+      marker.setLatLng([pos.lat, pos.lon]);
+      loadForecast();
+    },
+    e => {
+      forecastEl.textContent = "No pude obtener tu ubicación (" + e.message + "). Revisá el permiso de ubicación del navegador.";
+    }
+  );
+});
+
+function init() {
+  map = L.map("map").setView([pos.lat, pos.lon], 7);
+  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 18,
+    attribution: "© OpenStreetMap"
+  }).addTo(map);
+  marker = L.marker([pos.lat, pos.lon]).addTo(map);
+  loadRadar();
+  loadForecast();
+  startAnimation();
+}
+
+try {
+  init();
+} catch (e) {
+  radarTime.textContent = "Error al iniciar la app: " + e.message;
+}
+</script>
+</body>
+</html>
