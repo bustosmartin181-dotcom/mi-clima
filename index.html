@@ -77,6 +77,23 @@ nav.tabs{position:fixed;left:0;right:0;bottom:0;display:flex;background:var(--ca
 nav.tabs button{flex:1;background:transparent;color:var(--muted);border-radius:0;padding:8px 2px 10px;font-size:12px;display:flex;flex-direction:column;align-items:center;gap:2px}
 nav.tabs button .ic{font-size:21px}
 nav.tabs button.on{color:var(--accent);font-weight:700}
+/* Lugares */
+.nombreLugar{background:transparent!important;color:#fff;font-size:18px;font-weight:700;padding:4px 0;text-align:left}
+#hojaLugares{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:2000;display:none;align-items:flex-end}
+#hojaLugares.abierta{display:flex}
+.hoja{background:var(--card);color:var(--text);width:100%;max-height:85vh;overflow:auto;border-radius:18px 18px 0 0;padding:16px 16px calc(16px + env(safe-area-inset-bottom))}
+.item-lugar{display:flex;align-items:center;justify-content:space-between;gap:8px;border-bottom:1px solid var(--border)}
+.item-lugar button.ir{flex:1;background:transparent;color:var(--text);text-align:left;padding:12px 4px}
+.item-lugar.sel button.ir{font-weight:700;color:var(--accent)}
+.item-lugar button.borrar{background:transparent;color:var(--muted);padding:8px 10px}
+.resultado{display:block;width:100%;background:transparent;color:var(--text);text-align:left;padding:10px 4px;border-bottom:1px solid var(--border)}
+#buscarCiudad{flex:1;min-width:0;font:inherit;padding:10px;border-radius:10px;border:1px solid var(--border);background:transparent;color:var(--text)}
+/* Alertas y aire */
+.alerta{display:flex;gap:8px;align-items:flex-start;margin-top:6px;font-size:14px;line-height:1.4}
+.punto{width:11px;height:11px;border-radius:50%;margin-top:4px;flex:0 0 auto}
+.aqi{display:flex;align-items:center;gap:10px;margin-top:8px}
+.aqi .valor{font-size:28px;font-weight:700}
+.aqi .cat{font-size:16px;font-weight:600}
 </style>
 </head>
 <body>
@@ -84,7 +101,7 @@ nav.tabs button.on{color:var(--accent);font-weight:700}
 <!-- ============ AHORA ============ -->
 <section id="tab-ahora" class="tab activa">
   <div class="cabecera">
-    <div class="lugar"><span id="lugar">Mendoza</span><button id="btnLoc" class="chico" type="button">📍 Mi ubicación</button></div>
+    <div class="lugar"><button id="btnLugar" class="nombreLugar" type="button" aria-label="Cambiar de lugar"><span id="lugar">Mendoza</span> ▾</button><button id="btnLoc" class="chico" type="button">📍 GPS</button></div>
     <div class="actual">
       <div id="iconoActual" class="icono-grande">⏳</div>
       <div>
@@ -101,6 +118,11 @@ nav.tabs button.on{color:var(--accent);font-weight:700}
     <div class="botones"><button class="sec chico" type="button" data-ir="radar">🛰️ Ver radar</button><button class="sec chico" type="button" data-ir="alarma">🔔 Alarma</button></div>
   </div>
 
+  <div class="panel" id="panelAlertas">
+    <strong>Alertas del pronóstico (próximas 48 h)</strong>
+    <div id="alertasPron" style="margin-top:4px" class="small">Cargando…</div>
+  </div>
+
   <div class="panel">
     <strong>Próximas 24 horas</strong>
     <div id="horas" class="horas"></div>
@@ -109,6 +131,11 @@ nav.tabs button.on{color:var(--accent);font-weight:700}
   <div class="panel">
     <div id="detalles" class="grilla"></div>
     <div id="actualizado" class="small"></div>
+  </div>
+
+  <div class="panel" id="panelAire">
+    <strong>Calidad del aire</strong>
+    <div id="aire" class="small">Cargando…</div>
   </div>
 </section>
 
@@ -125,6 +152,7 @@ nav.tabs button.on{color:var(--accent);font-weight:700}
       <input id="slider" type="range" min="0" max="0" value="0" aria-label="Elegir imagen del radar">
     </div>
     <div id="radarInfo" class="small">Buscando imágenes del radar…</div>
+    <div id="notaZona" class="small" style="display:none"></div>
     <label class="check" id="limpioWrap"><input type="checkbox" id="chkLimpio" checked> Radar limpio (sin el ruido de cerros y ciudad)</label>
     <label class="check" id="hailWrap"><input type="checkbox" id="chkHail"> Mostrar probabilidad de granizo</label>
     <label class="check"><input type="checkbox" id="chkRayos" checked> Mostrar rayos (últimos 15 min)</label>
@@ -149,7 +177,7 @@ nav.tabs button.on{color:var(--accent);font-weight:700}
   <div class="panel small">
     Pronóstico: Open-Meteo (CC BY 4.0). Radar y rayos: Dirección de Agricultura y Contingencias Climáticas, Gobierno de Mendoza
     (<a href="https://www2.contingencias.mendoza.gov.ar/radar/web/" target="_blank" rel="noopener">radar oficial</a>), rayos del satélite GOES-19 (NOAA).
-    Radar regional: RainViewer (Weather data by RainViewer). Mapa: © OpenStreetMap. Nombre del lugar: OpenStreetMap Nominatim. App de uso personal.
+    Radar regional: RainViewer (Weather data by RainViewer). Mapa: © OpenStreetMap. Nombre del lugar: OpenStreetMap Nominatim. Calidad del aire: Open-Meteo (CAMS). Búsqueda de ciudades: Open-Meteo (GeoNames). App de uso personal.
   </div>
 </section>
 
@@ -179,6 +207,16 @@ nav.tabs button.on{color:var(--accent);font-weight:700}
     Detecta bien las tormentas fuertes; la lluvia débil sobre la ciudad se le puede escapar. Es una ayuda: no reemplaza las alertas oficiales.
   </div>
 </section>
+
+<div id="hojaLugares" role="dialog" aria-label="Mis lugares">
+  <div class="hoja">
+    <div class="row" style="justify-content:space-between"><strong>Mis lugares</strong><button id="cerrarLugares" class="sec chico" type="button">Cerrar</button></div>
+    <div id="listaLugares"></div>
+    <div style="margin-top:16px"><strong>Agregar una ciudad</strong></div>
+    <div class="row" style="margin-top:8px"><input id="buscarCiudad" type="search" placeholder="Ej.: Río Grande" enterkeyhint="search"><button id="btnBuscar" type="button">Buscar</button></div>
+    <div id="resultadosCiudad" class="small"></div>
+  </div>
+</div>
 
 <nav class="tabs" aria-label="Secciones">
   <button type="button" data-tab="ahora" class="on"><span class="ic">🌤️</span>Ahora</button>
@@ -232,6 +270,12 @@ let rayos = new Map(), capaRayos = null, rayosOk = null;
 let alarmaActiva = false, nivelAnterior = "gris", audioCtx = null, swReg = null, vigilaUbicacion = null, bloqueoPantalla = null;
 let ultimaUbicacionEnviada = null;
 let tabActual = "ahora";
+// Lugares: "Mi ubicación" (GPS) y ciudades guardadas
+let ciudades = leerLocal("miClimaCiudades") || [];
+let lugarSel = leerLocal("miClimaLugarSel") || "gps";
+let nombreGps = "Mi ubicación";
+let codigoInvitacion = leerLocal("miClimaCodigo") || "";
+let radarAuto = false; // true si la app cambió sola a RainViewer por estar fuera de la zona de Mendoza
 
 const $ = id => document.getElementById(id);
 const info = $("radarInfo");
@@ -286,15 +330,17 @@ function nombreDia(fecha, i) {
 }
 const r0 = v => (typeof v === "number" ? Math.round(v) : "–");
 
+let pedidoClima = 0;
 async function cargarClima() {
-  const clave = "miClimaClima";
+  const l = lugarActual(), yo = ++pedidoClima;
+  const clave = "miClimaClima:" + l.id;
   const guardado = leerLocal(clave);
   if (guardado && guardado.datos) dibujarClima(guardado.datos, guardado.t); // se ve al instante, aunque no haya señal
   try {
     const url = "https://api.open-meteo.com/v1/forecast" +
-      `?latitude=${pos.lat.toFixed(4)}&longitude=${pos.lon.toFixed(4)}` +
+      `?latitude=${l.lat.toFixed(4)}&longitude=${l.lon.toFixed(4)}` +
       "&current=temperature_2m,relative_humidity_2m,apparent_temperature,is_day,precipitation,weather_code,surface_pressure,wind_speed_10m,wind_direction_10m,wind_gusts_10m" +
-      "&hourly=temperature_2m,precipitation_probability,weather_code,is_day" +
+      "&hourly=temperature_2m,precipitation_probability,weather_code,is_day,wind_gusts_10m,precipitation,snowfall" +
       "&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,sunrise,sunset,uv_index_max,wind_speed_10m_max,wind_gusts_10m_max" +
       "&timezone=auto&forecast_days=7";
     const r = await fetch(url);
@@ -303,9 +349,11 @@ async function cargarClima() {
     const datos = await r.json();
     if (!datos.current || !datos.daily) throw new Error("datos incompletos");
     guardarLocal(clave, { datos, t: Date.now() });
-    dibujarClima(datos, Date.now());
+    if (yo === pedidoClima) dibujarClima(datos, Date.now());
   } catch (e) {
+    if (yo !== pedidoClima) return;
     $("actualizado").textContent = (guardado ? "Mostrando el último pronóstico guardado. " : "") + "No pude actualizar el clima: " + e.message;
+    if (!guardado) $("alertasPron").textContent = "Sin datos del pronóstico.";
   }
 }
 
@@ -357,6 +405,7 @@ function dibujarClima(d, t) {
     det.appendChild(div);
   }
   $("actualizado").textContent = `Pronóstico actualizado a las ${horaLocal(t)}.`;
+  dibujarAlertasPron(d);
 
   // 7 días
   const dias = $("dias");
@@ -382,7 +431,7 @@ async function cargarModelos() {
   el.textContent = "Cargando…";
   try {
     const url = "https://api.open-meteo.com/v1/forecast" +
-      `?latitude=${pos.lat.toFixed(4)}&longitude=${pos.lon.toFixed(4)}` +
+      `?latitude=${lugarActual().lat.toFixed(4)}&longitude=${lugarActual().lon.toFixed(4)}` +
       "&hourly=precipitation&models=gfs_seamless,ecmwf_ifs025,icon_seamless&timezone=auto&forecast_days=2";
     const r = await fetch(url);
     if (r.status === 429) throw new Error("Open-Meteo está limitando las consultas, probá más tarde");
@@ -406,23 +455,210 @@ async function cargarModelos() {
 }
 $("detModelos").addEventListener("toggle", e => { if (e.target.open) cargarModelos(); });
 
-// Nombre del lugar (OpenStreetMap Nominatim), guardado para no pedirlo de nuevo
+// Nombre preciso de tu ubicación (OpenStreetMap Nominatim), guardado para no pedirlo de nuevo
+function limpiarNombre(t) { return t ? t.replace(/^(Barrio|Distrito Ciudad de|Ciudad de|Municipio de|Departamento|Sección)\s+/i, "").trim() : t; }
 async function cargarLugar() {
   const clave = `${pos.lat.toFixed(2)},${pos.lon.toFixed(2)}`;
-  const guardados = leerLocal("miClimaLugares") || {};
-  if (guardados[clave]) { $("lugar").textContent = guardados[clave]; return; }
+  const guardados = leerLocal("miClimaNombres") || {};
+  if (guardados[clave]) { nombreGps = guardados[clave]; actualizarCabecera(); return; }
   try {
-    const r = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${pos.lat.toFixed(4)}&lon=${pos.lon.toFixed(4)}&zoom=10&accept-language=es`);
+    const r = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${pos.lat.toFixed(4)}&lon=${pos.lon.toFixed(4)}&zoom=14&accept-language=es`);
     if (!r.ok) throw new Error("HTTP " + r.status);
-    const d = await r.json(), a = d.address || {};
-    const lugar = a.city || a.town || a.village || a.municipality || a.county || a.state_district || "Mi ubicación";
-    const prov = a.state ? `, ${a.state}` : "";
-    const nombre = lugar + (prov && !prov.includes(lugar) ? prov : "");
-    $("lugar").textContent = nombre;
-    guardados[clave] = nombre;
-    guardarLocal("miClimaLugares", guardados);
+    const a = (await r.json()).address || {};
+    const local = limpiarNombre(a.hamlet || a.neighbourhood || a.quarter || a.suburb || a.city_district || a.village || a.town);
+    const mayor = limpiarNombre(a.city || a.town || a.county || a.village || a.state_district || a.state);
+    const partes = [];
+    for (const x of [local, mayor]) if (x && !partes.some(y => y.toLowerCase() === x.toLowerCase())) partes.push(x);
+    nombreGps = partes.join(", ") || "Mi ubicación";
+    guardados[clave] = nombreGps;
+    guardarLocal("miClimaNombres", guardados);
   } catch (e) {
-    $("lugar").textContent = "Mi ubicación";
+    nombreGps = "Mi ubicación";
+  }
+  actualizarCabecera();
+}
+
+// =================== Lugares guardados ===================
+function lugarActual() {
+  if (lugarSel !== "gps") {
+    const c = ciudades.find(x => x.id === lugarSel);
+    if (c) return { ...c, gps: false };
+    lugarSel = "gps";
+  }
+  return { id: "gps", nombre: nombreGps, lat: pos.lat, lon: pos.lon, gps: true };
+}
+function actualizarCabecera() { $("lugar").textContent = lugarActual().nombre; }
+function provinciaCorta(t) { return t ? t.replace(/^(Provincia de|Estado de|Departamento de|Región de|Región)\s+/i, "").split(",")[0].trim() : ""; }
+function dibujarListaLugares() {
+  const cont = $("listaLugares");
+  cont.textContent = "";
+  const todos = [{ id: "gps", nombre: "📍 " + nombreGps + " (GPS)" }, ...ciudades];
+  for (const l of todos) {
+    const fila = document.createElement("div");
+    fila.className = "item-lugar" + (l.id === lugarSel ? " sel" : "");
+    const ir = document.createElement("button");
+    ir.type = "button"; ir.className = "ir"; ir.textContent = l.nombre;
+    ir.addEventListener("click", () => { seleccionarLugar(l.id); cerrarLugares(); });
+    fila.appendChild(ir);
+    if (l.id !== "gps") {
+      const borrar = document.createElement("button");
+      borrar.type = "button"; borrar.className = "borrar"; borrar.textContent = "✕"; borrar.setAttribute("aria-label", "Quitar " + l.nombre);
+      borrar.addEventListener("click", () => {
+        ciudades = ciudades.filter(x => x.id !== l.id);
+        guardarLocal("miClimaCiudades", ciudades);
+        try { localStorage.removeItem("miClimaClima:" + l.id); } catch (e) { /* nada */ }
+        if (lugarSel === l.id) seleccionarLugar("gps"); else dibujarListaLugares();
+      });
+      fila.appendChild(borrar);
+    }
+    cont.appendChild(fila);
+  }
+}
+function abrirLugares() { dibujarListaLugares(); $("resultadosCiudad").textContent = ""; $("hojaLugares").classList.add("abierta"); }
+function cerrarLugares() { $("hojaLugares").classList.remove("abierta"); }
+async function buscarCiudad() {
+  const q = $("buscarCiudad").value.trim();
+  const res = $("resultadosCiudad");
+  if (q.length < 2) { res.textContent = "Escribí al menos 2 letras."; return; }
+  res.textContent = "Buscando…";
+  try {
+    const r = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(q)}&count=10&language=es&format=json`);
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    const lista = ((await r.json()).results || [])
+      .sort((a, b) => (b.country_code === "AR") - (a.country_code === "AR") || (b.population || 0) - (a.population || 0));
+    res.textContent = "";
+    if (!lista.length) { res.textContent = "No encontré esa ciudad. Probá con otro nombre."; return; }
+    for (const x of lista) {
+      const nombre = x.name + (x.admin1 ? ", " + provinciaCorta(x.admin1) : "") + (x.country_code !== "AR" && x.country ? ", " + x.country : "");
+      const b = document.createElement("button");
+      b.type = "button"; b.className = "resultado"; b.textContent = "➕ " + nombre;
+      b.addEventListener("click", () => {
+        const id = "c" + x.id;
+        if (!ciudades.some(c => c.id === id)) ciudades.push({ id, nombre, lat: x.latitude, lon: x.longitude });
+        guardarLocal("miClimaCiudades", ciudades);
+        $("buscarCiudad").value = "";
+        seleccionarLugar(id);
+        cerrarLugares();
+      });
+      res.appendChild(b);
+    }
+  } catch (e) {
+    res.textContent = "No pude buscar: " + e.message;
+  }
+}
+function seleccionarLugar(id) {
+  lugarSel = id;
+  guardarLocal("miClimaLugarSel", id);
+  const l = lugarActual();
+  actualizarCabecera();
+  $("iconoActual").textContent = "⏳"; $("tempActual").textContent = "--°"; $("descActual").textContent = "Cargando el clima…"; $("sensacion").textContent = "";
+  $("alertasPron").textContent = "Cargando…"; $("aire").textContent = "Cargando…";
+  if ($("detModelos").open) cargarModelos();
+  cargarClima();
+  cargarAire();
+  mostrarOcultarAlarmaAhora();
+  ajustarRadarAlLugar(true);
+  dibujarListaLugares();
+}
+// La tarjeta de la alarma de tormentas (radar de Mendoza) se muestra solo para tu ubicación
+function mostrarOcultarAlarmaAhora() {
+  const l = lugarActual();
+  $("estado").style.display = l.gps && dentroDelRadar(pos.lat, pos.lon) ? "" : "none";
+}
+// En la pestaña Radar: centra el mapa y usa RainViewer si el lugar está fuera del radar de Mendoza
+function ajustarRadarAlLugar(centrar) {
+  if (!map) return;
+  const l = lugarActual(), dentro = dentroDelRadar(l.lat, l.lon);
+  if (centrar) map.setView([l.lat, l.lon], dentro ? 9 : 8);
+  const nota = $("notaZona");
+  if (!dentro) {
+    nota.style.display = "";
+    nota.innerHTML = 'En esta zona no llega el radar de Mendoza: se muestra RainViewer (puede tener poca cobertura). Mirá también el <a href="https://www.smn.gob.ar/radar" target="_blank" rel="noopener">radar oficial del SMN</a>' + (l.lat < -50 ? " (el de Río Grande es el RMA9)." : ".");
+    if (fuente === "mza") { radarAuto = true; verRainViewer(); }
+  } else {
+    nota.style.display = "none";
+    if (fuente === "rv" && radarAuto) { radarAuto = false; verMendoza(false); }
+  }
+}
+
+// =================== Alertas del pronóstico ===================
+function cuando(iso) {
+  const d = new Date(iso), hoy = new Date();
+  const dia = d.toDateString() === hoy.toDateString() ? "hoy" : d.toDateString() === new Date(hoy.getTime() + 86400000).toDateString() ? "mañana" : d.toLocaleDateString("es-AR", { weekday: "long" });
+  return `${dia} ${String(iso).slice(11, 16)}`;
+}
+function dibujarAlertasPron(d) {
+  const h = d.hourly, cont = $("alertasPron");
+  cont.textContent = "";
+  cont.className = "";
+  if (!h || !h.time) { cont.textContent = "Sin datos del pronóstico."; return; }
+  let ini = h.time.findIndex(x => new Date(x).getTime() >= Date.now() - 3600000);
+  if (ini < 0) ini = 0;
+  const fin = Math.min(h.time.length, ini + 48), lista = [];
+  const maxDe = arr => { let m = -Infinity, t = null; if (arr) for (let i = ini; i < fin; i++) if (typeof arr[i] === "number" && arr[i] > m) { m = arr[i]; t = h.time[i]; } return { m, t }; };
+  const minDe = arr => { let m = Infinity, t = null; if (arr) for (let i = ini; i < fin; i++) if (typeof arr[i] === "number" && arr[i] < m) { m = arr[i]; t = h.time[i]; } return { m, t }; };
+  const suma24 = arr => { let s = 0; if (arr) for (let i = ini; i < Math.min(fin, ini + 24); i++) if (typeof arr[i] === "number") s += arr[i]; return s; };
+  const raf = maxDe(h.wind_gusts_10m);
+  if (raf.m >= 90) lista.push(["rojo", `Viento muy fuerte: ráfagas de hasta ${r0(raf.m)} km/h (${cuando(raf.t)}).`]);
+  else if (raf.m >= 70) lista.push(["naranja", `Viento fuerte: ráfagas de hasta ${r0(raf.m)} km/h (${cuando(raf.t)}).`]);
+  else if (raf.m >= 55) lista.push(["amarillo", `Ráfagas fuertes de hasta ${r0(raf.m)} km/h (${cuando(raf.t)}).`]);
+  const nieve = suma24(h.snowfall);
+  if (nieve >= 5) lista.push(["naranja", `Nevadas: unos ${nieve.toFixed(0)} cm en las próximas 24 h.`]);
+  else if (nieve >= 0.5) lista.push(["amarillo", `Puede nevar: ${nieve.toFixed(1).replace(".", ",")} cm en las próximas 24 h.`]);
+  const lluviaH = maxDe(h.precipitation), lluvia24 = suma24(h.precipitation);
+  if (lluviaH.m >= 10 || lluvia24 >= 30) lista.push(["naranja", `Lluvia intensa: hasta ${lluviaH.m.toFixed(0)} mm en una hora (${cuando(lluviaH.t)}), ${lluvia24.toFixed(0)} mm en 24 h.`]);
+  let tormenta = null;
+  if (h.weather_code) for (let i = ini; i < fin; i++) if (h.weather_code[i] >= 95) { tormenta = { cod: h.weather_code[i], t: h.time[i] }; break; }
+  if (tormenta) lista.push([tormenta.cod > 95 ? "naranja" : "amarillo", (tormenta.cod > 95 ? "Tormentas con posible granizo" : "Posibles tormentas") + ` desde ${cuando(tormenta.t)}.`]);
+  const tMax = maxDe(h.temperature_2m), tMin = minDe(h.temperature_2m);
+  if (tMax.m >= 38) lista.push(["naranja", `Calor extremo: hasta ${r0(tMax.m)}° (${cuando(tMax.t)}).`]);
+  else if (tMax.m >= 35) lista.push(["amarillo", `Mucho calor: hasta ${r0(tMax.m)}° (${cuando(tMax.t)}).`]);
+  if (tMin.m <= -8) lista.push(["naranja", `Frío extremo: hasta ${r0(tMin.m)}° (${cuando(tMin.t)}).`]);
+  else if (tMin.m <= 0) lista.push(["amarillo", `Heladas: mínima de ${r0(tMin.m)}° (${cuando(tMin.t)}).`]);
+  if (!lista.length) lista.push(["verde", "Sin alertas en el pronóstico."]);
+  const colores = { verde: "var(--n-verde)", amarillo: "var(--n-amarillo)", naranja: "var(--n-naranja)", rojo: "var(--n-rojo)" };
+  lista.sort((a, b) => ORDEN[b[0]] - ORDEN[a[0]]);
+  for (const [nivel, texto] of lista) {
+    const fila = document.createElement("div");
+    fila.className = "alerta";
+    const punto = document.createElement("span");
+    punto.className = "punto"; punto.style.background = colores[nivel];
+    const t = document.createElement("span");
+    t.textContent = texto;
+    fila.append(punto, t);
+    cont.appendChild(fila);
+  }
+  const nota = document.createElement("div");
+  nota.className = "small";
+  nota.textContent = "Calculadas con el pronóstico (Open-Meteo). Para avisos oficiales, consultá el SMN.";
+  cont.appendChild(nota);
+}
+
+// =================== Calidad del aire ===================
+const CATEGORIAS_AIRE = [[20, "Buena", "#2e7d32"], [40, "Aceptable", "#7cb342"], [60, "Moderada", "#f9a825"], [80, "Mala", "#ef6c00"], [100, "Muy mala", "#c62828"], [Infinity, "Extremadamente mala", "#6a1b9a"]];
+let pedidoAire = 0;
+async function cargarAire() {
+  const l = lugarActual(), el = $("aire"), yo = ++pedidoAire;
+  try {
+    const r = await fetch(`https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${l.lat.toFixed(4)}&longitude=${l.lon.toFixed(4)}&current=european_aqi,pm10,pm2_5,dust&timezone=auto`);
+    if (r.status === 429) throw new Error("el servicio está limitando las consultas, probá más tarde");
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    const c = (await r.json()).current || {};
+    if (yo !== pedidoAire) return;
+    if (typeof c.european_aqi !== "number") throw new Error("sin datos para este lugar");
+    const [, cat, color] = CATEGORIAS_AIRE.find(([max]) => c.european_aqi <= max);
+    const f = v => (typeof v === "number" ? v.toFixed(0) : "–");
+    el.className = "";
+    el.innerHTML = '<div class="aqi"><span class="punto" style="width:16px;height:16px;margin:0"></span><span class="valor"></span><span class="cat"></span></div><div class="small"></div>';
+    el.querySelector(".punto").style.background = color;
+    el.querySelector(".valor").textContent = c.european_aqi;
+    el.querySelector(".cat").textContent = cat;
+    el.querySelector(".small").textContent = `Partículas finas (PM2,5): ${f(c.pm2_5)} µg/m³ · PM10: ${f(c.pm10)} µg/m³ · Polvo: ${f(c.dust)} µg/m³` +
+      (c.dust >= 50 ? " · Hay mucho polvo en el aire (por ejemplo, con Zonda)." : "") + ". Índice europeo de calidad del aire (Open-Meteo, estimado).";
+  } catch (e) {
+    if (yo !== pedidoAire) return;
+    el.className = "small";
+    el.textContent = "No pude cargar la calidad del aire: " + e.message;
   }
 }
 
@@ -694,7 +930,7 @@ async function activarAlarma() {
   await registrarSW();
   if (navigator.geolocation) {
     vigilaUbicacion = navigator.geolocation.watchPosition(
-      p => { pos = { lat: p.coords.latitude, lon: p.coords.longitude }; guardarUbicacion(); ponerMarcador(); evaluarAlarma(); enviarUbicacionAvisos(); },
+      p => { pos = { lat: p.coords.latitude, lon: p.coords.longitude }; guardarUbicacion(); ponerMarcador(); evaluarAlarma(); enviarUbicacionAvisos(); mostrarOcultarAlarmaAhora(); },
       () => { /* seguimos con la última ubicación */ },
       { enableHighAccuracy: true, maximumAge: 30000, timeout: 30000 }
     );
@@ -724,7 +960,7 @@ async function idDe(endpoint) {
 async function pedirAlIntermediario(ruta, cuerpo) {
   const r = await fetch(PROXY + ruta, cuerpo ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(cuerpo) } : { cache: "no-store" });
   const texto = await r.text();
-  if (!r.ok) throw new Error(r.status === 503 ? "falta conectar el almacenamiento KV en Cloudflare (MI_CLIMA)" : texto || "HTTP " + r.status);
+  if (!r.ok) { const e = new Error(r.status === 503 ? "falta conectar el almacenamiento KV en Cloudflare (MI_CLIMA)" : texto || "HTTP " + r.status); e.status = r.status; throw e; }
   return texto ? JSON.parse(texto) : {};
 }
 function pushSoportado() { return "serviceWorker" in navigator && "PushManager" in window && "Notification" in window; }
@@ -736,6 +972,12 @@ async function mostrarInfoAvisos() {
   const el = $("pushInfo");
   if (!pushSoportado()) { el.textContent = "Este navegador no permite avisos con la pantalla apagada. Instalá la app desde Chrome."; $("btnPush").disabled = true; return; }
   if (!usarProxy) { el.textContent = "Sin conexión con tu intermediario de Cloudflare."; return; }
+  if (!dentroDelRadar(pos.lat, pos.lon) && !leerLocal("miClimaAvisos")) {
+    el.textContent = "Los avisos con pantalla apagada funcionan solo en la zona del radar de Mendoza. En tu ubicación tenés las alertas del pronóstico en la pestaña Ahora.";
+    $("btnPush").disabled = true;
+    return;
+  }
+  $("btnPush").disabled = false;
   try {
     const sub = await suscripcionActual();
     if (!sub || !leerLocal("miClimaAvisos")) {
@@ -748,9 +990,9 @@ async function mostrarInfoAvisos() {
     let txt = "✅ Avisos activados.";
     if (e.revisado) {
       const min = Math.round((Date.now() - e.revisado) / 60000);
-      txt += ` Última revisión automática: hace ${min} min (${e.titulo || "sin datos"}).`;
-      if (min > 15) txt += " ⚠ Hace rato que no revisa: fijate que esté el Cron Trigger en Cloudflare.";
-    } else txt += " Todavía no hubo ninguna revisión automática (se hace cada 5 minutos).";
+      txt += ` Última revisión registrada: hace ${min} min (${e.titulo || "sin datos"}).`;
+      if (min > 30) txt += " ⚠ Hace rato que no revisa: fijate que esté el Cron Trigger en Cloudflare.";
+    } else txt += " Todavía no hubo ninguna revisión automática (tarda unos minutos).";
     el.textContent = txt;
   } catch (e) {
     el.textContent = "No pude consultar los avisos: " + e.message;
@@ -768,6 +1010,7 @@ async function activarAvisos() {
       el.textContent = "Avisos desactivados.";
     } else {
       if (!pushSoportado()) throw new Error("este navegador no permite avisos");
+      if (!dentroDelRadar(pos.lat, pos.lon)) throw new Error("los avisos con pantalla apagada funcionan solo en la zona del radar de Mendoza");
       if (Notification.permission !== "granted" && await Notification.requestPermission() !== "granted") throw new Error("no diste permiso para las notificaciones");
       const reg = await registrarSW();
       if (!reg) throw new Error("no pude registrar el servicio de notificaciones");
@@ -780,7 +1023,22 @@ async function activarAvisos() {
         if (!actual || actual.length !== nueva.length || actual.some((v, i) => v !== nueva[i])) { await sub.unsubscribe(); sub = null; }
       }
       if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64urlABytes(publica) });
-      await pedirAlIntermediario("/suscribir", { endpoint: sub.endpoint, lat: pos.lat, lon: pos.lon });
+      try {
+        await pedirAlIntermediario("/suscribir", { endpoint: sub.endpoint, lat: pos.lat, lon: pos.lon, codigo: codigoInvitacion });
+      } catch (e) {
+        if (e.status !== 403) throw e;
+        const c = prompt("Código de invitación (te lo pasa quien te compartió la app):", "");
+        if (!c || !c.trim()) throw new Error("hace falta el código de invitación");
+        codigoInvitacion = c.trim();
+        try {
+          await pedirAlIntermediario("/suscribir", { endpoint: sub.endpoint, lat: pos.lat, lon: pos.lon, codigo: codigoInvitacion });
+          guardarLocal("miClimaCodigo", codigoInvitacion);
+        } catch (e2) {
+          codigoInvitacion = "";
+          guardarLocal("miClimaCodigo", "");
+          throw e2;
+        }
+      }
       ultimaUbicacionEnviada = { ...pos, t: Date.now() };
       guardarLocal("miClimaAvisos", { desde: Date.now() });
     }
@@ -1014,9 +1272,9 @@ $("btnLoc").addEventListener("click", () => {
   navigator.geolocation.getCurrentPosition(
     p => {
       pos = { lat: p.coords.latitude, lon: p.coords.longitude };
-      guardarUbicacion(); map.setView([pos.lat, pos.lon], 10); ponerMarcador();
-      cargarLugar(); cargarClima(); evaluarAlarma(); enviarUbicacionAvisos();
-      if ($("detModelos").open) cargarModelos();
+      guardarUbicacion(); ponerMarcador();
+      evaluarAlarma(); enviarUbicacionAvisos(); mostrarInfoAvisos();
+      cargarLugar().then(() => seleccionarLugar("gps"));
     },
     e => { cargarLugar(); $("actualizado").textContent = "No pude obtener tu ubicación (" + e.message + "). Revisá el permiso de ubicación del navegador."; },
     { enableHighAccuracy: true, timeout: 20000 }
@@ -1026,8 +1284,13 @@ $("btnLoc").addEventListener("click", () => {
 // =================== Controles ===================
 $("btnPlay").addEventListener("click", () => { playing = !playing; $("btnPlay").textContent = playing ? "⏸" : "▶"; });
 $("slider").addEventListener("input", () => { playing = false; $("btnPlay").textContent = "▶"; mostrar(Number($("slider").value)); });
-$("srcMza").addEventListener("click", () => { if (fuente !== "mza") verMendoza(false); });
-$("srcRv").addEventListener("click", () => { if (fuente !== "rv") verRainViewer(); });
+$("srcMza").addEventListener("click", () => { radarAuto = false; if (fuente !== "mza") verMendoza(false); });
+$("srcRv").addEventListener("click", () => { radarAuto = false; if (fuente !== "rv") verRainViewer(); });
+$("btnLugar").addEventListener("click", abrirLugares);
+$("cerrarLugares").addEventListener("click", cerrarLugares);
+$("hojaLugares").addEventListener("click", e => { if (e.target.id === "hojaLugares") cerrarLugares(); });
+$("btnBuscar").addEventListener("click", buscarCiudad);
+$("buscarCiudad").addEventListener("keydown", e => { if (e.key === "Enter") buscarCiudad(); });
 $("chkLimpio").addEventListener("change", e => { limpio = e.target.checked; guardarLocal("miClimaLimpio", limpio); if (limpio) prepararLimpias(); if (fuente === "mza" && mzaFrames.length) mostrar(idx); });
 $("chkHail").addEventListener("change", async e => { hailOn = e.target.checked; if (hailOn) { await precargarGranizo(); if (limpio) prepararLimpias(); } if (fuente === "mza" && mzaFrames.length) mostrar(idx); });
 $("chkRayos").addEventListener("change", e => { if (e.target.checked) capaRayos.addTo(map); else map.removeLayer(capaRayos); });
@@ -1058,14 +1321,18 @@ async function iniciar() {
   L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 18, attribution: "© OpenStreetMap" }).addTo(map);
   capaRayos = L.layerGroup().addTo(map);
   ponerMarcador();
+  actualizarCabecera();
+  mostrarOcultarAlarmaAhora();
   cargarLugar();
   cargarClima();
+  cargarAire();
   const [proxyOk] = await Promise.all([probarProxy(), cargarTecho()]);
   usarProxy = proxyOk;
   marcarBotones();
   dibujarRayos();
   mostrarInfoAvisos();
   await verMendoza(true);
+  ajustarRadarAlLugar(lugarSel !== "gps");
   actualizarRayos();
   enviarUbicacionAvisos();
   setInterval(() => {
@@ -1078,7 +1345,7 @@ async function iniciar() {
   }, 500);
   setInterval(refrescar, PASO_MS);
   setInterval(actualizarRayos, RAYOS_CADA_MS);
-  setInterval(() => { if (document.visibilityState === "visible") cargarClima(); }, CLIMA_CADA_MS);
+  setInterval(() => { if (document.visibilityState === "visible") { cargarClima(); cargarAire(); } }, CLIMA_CADA_MS);
 }
 iniciar().catch(e => { info.textContent = "Error al iniciar la app: " + e.message; });
 </script>

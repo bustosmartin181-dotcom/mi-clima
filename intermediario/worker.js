@@ -1,4 +1,4 @@
-// Mi Clima - intermediario (Cloudflare Worker) - versión 2
+// Mi Clima - intermediario (Cloudflare Worker) - versión 3
 // 1) Deja que la app lea del sitio de Contingencias Climáticas de Mendoza:
 //      /rayos                              -> rayos del satélite (solo zona Mendoza)
 //      /radar/AAAAMMDD/HHMMSS_dbz.png      -> imagen del radar
@@ -7,6 +7,8 @@
 //    en la última ubicación de cada celular suscripto y, si hay peligro, le manda una notificación.
 //    Necesita un espacio KV conectado con el nombre MI_CLIMA. No usa claves que tengas que copiar:
 //    las genera solo la primera vez y las guarda en ese KV.
+// 3) Hasta 10 celulares. Opcional: si cargás un secreto llamado CODIGO, solo se pueden anotar
+//    los celulares que escriban ese código de invitación.
 
 const ORIGEN = "https://www2.contingencias.mendoza.gov.ar";
 const APP = "https://bustosmartin181-dotcom.github.io/mi-clima/";
@@ -19,7 +21,8 @@ const SERVICIOS_PUSH = [
   /^https:\/\/[a-z0-9.-]+\.notify\.windows\.com\//,
   /^https:\/\/web\.push\.apple\.com\//
 ];
-const MAX_SUSCRIPCIONES = 3;
+const MAX_SUSCRIPCIONES = 10;
+const POR_REVISION = 3; // celulares de la zona del radar que se revisan en cada pasada (se van turnando, agrupados por cercanía)
 const PASO_MS = 2 * 60 * 1000;
 
 // ---------- Geometría del radar (igual que en la app) ----------
@@ -316,7 +319,7 @@ function decidir(a, rayosLista, lat, lon, anterior, tRadar) {
   if (Number.isFinite(dN)) partes.push(`Tormenta más cercana a ${km(dN)} km (${a.maxNucleo} dBZ)` + (eta !== null ? `, llegaría en ~${Math.round(eta)} min` : ""));
   if (rayo) partes.push(`rayo más cercano a ${km(rayo.km)} km`);
   if (!a) partes.push("sin datos del radar en tu zona");
-  return { nivel, titulo, cuerpo: (partes.join(" · ") || "Abrí la app para ver el radar.") + ".", dNucleo: dN, tRadar };
+  return { nivel, titulo, cuerpo: partes.length ? partes.join(" · ") + "." : "Abrí la app para ver el radar.", dNucleo: dN, tRadar };
 }
 
 // ---------- Avisos (Web Push sin contenido: el celular pide el texto después) ----------
@@ -366,9 +369,12 @@ async function suscribir(request, env, cors) {
   const lat = Number(d.lat), lon = Number(d.lon);
   if (!ubicacionValida(lat, lon)) return texto("Ubicación inválida", 400, cors);
   const id = await idDe(endpoint);
-  let lista = (await leerSuscripciones(env)).filter(s => s.id !== id);
-  lista.push({ id, endpoint, lat, lon, actualizado: Date.now() });
-  if (lista.length > MAX_SUSCRIPCIONES) lista = lista.slice(-MAX_SUSCRIPCIONES);
+  const lista = await leerSuscripciones(env);
+  const existente = lista.find(s => s.id === id);
+  if (env.CODIGO && !existente && String(d.codigo || "").trim() !== String(env.CODIGO).trim()) return texto("Código de invitación incorrecto", 403, cors);
+  if (!existente && lista.length >= MAX_SUSCRIPCIONES) return texto(`La lista de avisos está completa (${MAX_SUSCRIPCIONES} celulares)`, 409, cors);
+  if (existente) { existente.lat = lat; existente.lon = lon; existente.actualizado = Date.now(); }
+  else lista.push({ id, endpoint, lat, lon, actualizado: Date.now() });
   await guardarSuscripciones(env, lista);
   return json({ ok: true, id }, 200, cors);
 }
@@ -393,7 +399,9 @@ async function desuscribir(request, env, cors) {
   if (typeof (d && d.endpoint) !== "string") return texto("Pedido inválido", 400, cors);
   const id = await idDe(d.endpoint);
   await guardarSuscripciones(env, (await leerSuscripciones(env)).filter(s => s.id !== id));
-  await env.MI_CLIMA.delete("estado:" + id);
+  const estados = (await env.MI_CLIMA.get("estados", "json")) || {};
+  if (estados[id]) { delete estados[id]; await env.MI_CLIMA.put("estados", JSON.stringify(estados)); }
+  await env.MI_CLIMA.delete("estado:" + id); // limpieza de la versión anterior
   return json({ ok: true }, 200, cors);
 }
 
@@ -418,49 +426,95 @@ async function avisoGuardado(url, env, cors) {
 async function estadoGuardado(url, env, cors) {
   const id = url.searchParams.get("id") || "";
   if (!/^[0-9a-f]{32}$/.test(id)) return texto("Pedido inválido", 400, cors);
-  return json((await env.MI_CLIMA.get("estado:" + id, "json")) || {}, 200, cors);
+  const estados = (await env.MI_CLIMA.get("estados", "json")) || {};
+  return json(estados[id] || {}, 200, cors);
 }
 
 // Revisión automática (Cron Trigger, cada 5 minutos)
-async function revisar(env) {
+// Para cuidar los límites gratis de Cloudflare: todos los estados van en una sola clave ("estados"),
+// se guarda solo si algo cambió (o cada 15 minutos), y si hay muchos celulares en la zona del radar
+// se revisan de a POR_REVISION por pasada, turnándose.
+function dentroDelRadar(lat, lon) {
+  const c = aPixel(lat, lon);
+  return c.x >= 0 && c.y >= 0 && c.x <= ANCHO - 1 && c.y <= ALTO - 1;
+}
+
+async function revisar(env, momento, intervaloMin) {
   const lista = await leerSuscripciones(env);
   if (!lista.length) return { suscripciones: 0 };
-  const [rayosLista, imagen, ruido] = await Promise.all([leerRayos().catch(() => []), ultimaImagen().catch(() => null), techoDeRuido().catch(() => null)]);
-  let img = null;
-  if (imagen) {
-    let filaDesde = ALTO, filaHasta = 0, colHasta = 0;
-    for (const s of lista) {
-      const c = aPixel(s.lat, s.lon);
-      filaDesde = Math.min(filaDesde, Math.floor(c.y) - RADIO_PX);
-      filaHasta = Math.max(filaHasta, Math.ceil(c.y) + RADIO_PX);
-      colHasta = Math.max(colHasta, Math.ceil(c.x) + RADIO_PX);
-    }
-    filaDesde = Math.max(0, filaDesde); filaHasta = Math.min(ALTO - 1, filaHasta); colHasta = Math.min(ANCHO - 1, Math.max(0, colHasta));
-    if (filaHasta >= 0 && filaDesde <= filaHasta) {
-      try { img = await leerFranja(imagen.bytes, filaDesde, filaHasta, colHasta); } catch (e) { img = null; }
-    }
-  }
   const ahora = Date.now();
-  const borrar = [];
+  momento = momento || ahora;
+  intervaloMin = intervaloMin || 5;
+  const estados = (await env.MI_CLIMA.get("estados", "json")) || {};
+  let cambio = false;
+  // ordenados de norte a sur: cada grupo queda con celulares cercanos y se lee una franja chica del radar
+  const enZona = lista.filter(s => dentroDelRadar(s.lat, s.lon)).sort((a, b) => aPixel(a.lat, a.lon).y - aPixel(b.lat, b.lon).y || (a.id < b.id ? -1 : 1));
   for (const s of lista) {
-    const anterior = (await env.MI_CLIMA.get("estado:" + s.id, "json")) || {};
-    const a = img ? analizar(img, ruido, s.lat, s.lon) : null;
-    const r = decidir(a, rayosLista, s.lat, s.lon, anterior, imagen ? imagen.t : 0);
-    const subio = ORDEN[r.nivel] > ORDEN[anterior.nivel || "verde"];
-    const repetir = ORDEN[r.nivel] >= ORDEN.naranja && ahora - (anterior.ultimoAviso || 0) > 60 * 60000;
-    r.ultimoAviso = anterior.ultimoAviso || 0;
-    if (ORDEN[r.nivel] >= ORDEN.naranja && (subio || repetir)) {
-      await env.MI_CLIMA.put("aviso:" + s.id, JSON.stringify({ titulo: "⚠ " + r.titulo, cuerpo: r.cuerpo, t: ahora }), { expirationTtl: 3600 });
-      const estado = await enviarAviso(env, s.endpoint);
-      if (estado === 404 || estado === 410) borrar.push(s.id);
-      r.ultimoAviso = ahora;
-      r.ultimoEnvio = estado;
+    if (!dentroDelRadar(s.lat, s.lon) && (!estados[s.id] || estados[s.id].nivel !== "gris")) {
+      estados[s.id] = { nivel: "gris", titulo: "Fuera del área del radar de Mendoza", cuerpo: "Los avisos con pantalla apagada funcionan en la zona del radar de Mendoza.", revisado: ahora };
+      cambio = true;
     }
-    r.revisado = ahora;
-    await env.MI_CLIMA.put("estado:" + s.id, JSON.stringify(r));
   }
-  if (borrar.length) await guardarSuscripciones(env, lista.filter(s => !borrar.includes(s.id)));
-  return { suscripciones: lista.length, radar: !!img, rayos: rayosLista.length };
+  // Grupos de celulares cercanos (hasta POR_REVISION, a menos de ~40 km de norte a sur entre sí)
+  const grupos = [];
+  let actual = [], yMin = Infinity, yMax = -Infinity;
+  for (const s of enZona) {
+    const y = aPixel(s.lat, s.lon).y;
+    if (actual.length && (actual.length >= POR_REVISION || Math.max(yMax, y) - Math.min(yMin, y) > 40)) { grupos.push(actual); actual = []; yMin = Infinity; yMax = -Infinity; }
+    actual.push(s); yMin = Math.min(yMin, y); yMax = Math.max(yMax, y);
+  }
+  if (actual.length) grupos.push(actual);
+  const lote = grupos.length ? grupos[Math.round(momento / (intervaloMin * 60000)) % grupos.length] : []; // cada pasada le toca al grupo siguiente
+  if (lote.length) {
+    const [rayosLista, imagen, ruido] = await Promise.all([leerRayos().catch(() => []), ultimaImagen().catch(() => null), techoDeRuido().catch(() => null)]);
+    let img = null;
+    if (imagen) {
+      let filaDesde = ALTO, filaHasta = 0, colHasta = 0;
+      for (const s of lote) {
+        const c = aPixel(s.lat, s.lon);
+        filaDesde = Math.min(filaDesde, Math.floor(c.y) - RADIO_PX);
+        filaHasta = Math.max(filaHasta, Math.ceil(c.y) + RADIO_PX);
+        colHasta = Math.max(colHasta, Math.ceil(c.x) + RADIO_PX);
+      }
+      filaDesde = Math.max(0, filaDesde); filaHasta = Math.min(ALTO - 1, filaHasta); colHasta = Math.min(ANCHO - 1, Math.max(0, colHasta));
+      if (filaDesde <= filaHasta) {
+        try { img = await leerFranja(imagen.bytes, filaDesde, filaHasta, colHasta); } catch (e) { img = null; }
+      }
+    }
+    const borrar = [];
+    for (const s of lote) {
+      const anterior = estados[s.id] || {};
+      const a = img ? analizar(img, ruido, s.lat, s.lon) : null;
+      const r = decidir(a, rayosLista, s.lat, s.lon, anterior, imagen ? imagen.t : 0);
+      r.ultimoAviso = anterior.ultimoAviso || 0;
+      const subio = ORDEN[r.nivel] > ORDEN[anterior.nivel || "verde"];
+      const repetir = ORDEN[r.nivel] >= ORDEN.naranja && ahora - r.ultimoAviso > 60 * 60000;
+      if (ORDEN[r.nivel] >= ORDEN.naranja && (subio || repetir)) {
+        await env.MI_CLIMA.put("aviso:" + s.id, JSON.stringify({ titulo: "⚠ " + r.titulo, cuerpo: r.cuerpo, t: ahora }), { expirationTtl: 3600 });
+        const estado = await enviarAviso(env, s.endpoint);
+        if (estado === 404 || estado === 410) borrar.push(s.id);
+        r.ultimoAviso = ahora;
+        r.ultimoEnvio = estado;
+      }
+      const dA = Number.isFinite(anterior.dNucleo) ? anterior.dNucleo : null, dN = Number.isFinite(r.dNucleo) ? r.dNucleo : null;
+      const movio = (dA === null) !== (dN === null) || (dN !== null && dN < 80 && Math.abs(dN - dA) >= 3);
+      const viejo = ahora - (anterior.revisado || 0) >= 15 * 60000;
+      if (r.nivel !== anterior.nivel || r.titulo !== anterior.titulo || movio || r.ultimoAviso !== (anterior.ultimoAviso || 0) || viejo) {
+        r.revisado = ahora;
+        estados[s.id] = r;
+        cambio = true;
+      }
+    }
+    if (borrar.length) {
+      await guardarSuscripciones(env, lista.filter(s => !borrar.includes(s.id)));
+      for (const id of borrar) delete estados[id];
+      cambio = true;
+    }
+  }
+  // quitar estados de celulares que ya no están en la lista
+  for (const id of Object.keys(estados)) if (!lista.some(s => s.id === id)) { delete estados[id]; cambio = true; }
+  if (cambio) await env.MI_CLIMA.put("estados", JSON.stringify(estados));
+  return { suscripciones: lista.length, revisados: lote.length, guardo: cambio };
 }
 
 export default {
@@ -470,7 +524,7 @@ export default {
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
 
     if (request.method === "GET" || request.method === "HEAD") {
-      if (url.pathname === "/") return texto("Mi Clima: intermediario funcionando (versión 2)" + (env.MI_CLIMA ? " · avisos listos" : " · falta conectar el KV MI_CLIMA"), 200, cors);
+      if (url.pathname === "/") return texto("Mi Clima: intermediario funcionando (versión 3)" + (env.MI_CLIMA ? " · avisos listos" : " · falta conectar el KV MI_CLIMA") + (env.CODIGO ? " · con código de invitación" : ""), 200, cors);
       if (url.pathname === "/rayos") return rayos(cors);
       const m = url.pathname.match(RUTA_RADAR);
       if (m) return imagenRadar(m, cors);
@@ -479,7 +533,7 @@ export default {
     if (rutasAvisos.includes(url.pathname)) {
       if (!env.MI_CLIMA) return texto("Falta conectar el espacio KV con el nombre MI_CLIMA", 503, cors);
       try {
-        if (request.method === "GET" && url.pathname === "/vapid") return json({ publica: (await clavesVapid(env)).publica }, 200, cors);
+        if (request.method === "GET" && url.pathname === "/vapid") return json({ publica: (await clavesVapid(env)).publica, pideCodigo: !!env.CODIGO }, 200, cors);
         if (request.method === "GET" && url.pathname === "/aviso") return avisoGuardado(url, env, cors);
         if (request.method === "GET" && url.pathname === "/estado") return estadoGuardado(url, env, cors);
         if (request.method === "POST" && url.pathname === "/suscribir") return suscribir(request, env, cors);
@@ -497,6 +551,7 @@ export default {
 
   async scheduled(event, env, ctx) {
     if (!env.MI_CLIMA) return;
-    ctx.waitUntil(revisar(env));
+    const m = /^\*\/(\d+)\s/.exec((event && event.cron) || "");
+    ctx.waitUntil(revisar(env, event && event.scheduledTime, m ? Number(m[1]) : 5));
   }
 };
