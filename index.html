@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#1565c0">
 <title>Mi Clima</title>
 <link rel="manifest" href="manifest.json">
@@ -11,120 +11,204 @@
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <style>
 :root{--bg:#f4f6f8;--card:#ffffff;--text:#1d2630;--muted:#5b6876;--accent:#1565c0;--warn:#a35f00;--border:rgba(127,127,127,.28);
-  --n-gris:#78909c;--n-verde:#2e7d32;--n-amarillo:#f9a825;--n-naranja:#ef6c00;--n-rojo:#c62828}
-@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--bg:#0f141a;--card:#1a222c;--text:#e8edf2;--muted:#9aa7b4;--accent:#4d9cff;--warn:#ffb74d}}
-:root[data-theme="dark"]{--bg:#0f141a;--card:#1a222c;--text:#e8edf2;--muted:#9aa7b4;--accent:#4d9cff;--warn:#ffb74d}
+  --n-gris:#78909c;--n-verde:#2e7d32;--n-amarillo:#f9a825;--n-naranja:#ef6c00;--n-rojo:#c62828;--cielo1:#1565c0;--cielo2:#42a5f5}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--bg:#0f141a;--card:#1a222c;--text:#e8edf2;--muted:#9aa7b4;--accent:#4d9cff;--warn:#ffb74d;--cielo1:#0d2a52;--cielo2:#1a4c8a}}
+:root[data-theme="dark"]{--bg:#0f141a;--card:#1a222c;--text:#e8edf2;--muted:#9aa7b4;--accent:#4d9cff;--warn:#ffb74d;--cielo1:#0d2a52;--cielo2:#1a4c8a}
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,Roboto,sans-serif}
-header{padding:12px 16px;display:flex;justify-content:space-between;align-items:center;gap:10px}
-header h1{font-size:20px;margin:0}
+body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,Roboto,sans-serif;padding-bottom:calc(68px + env(safe-area-inset-bottom))}
 button{font:inherit;border:0;border-radius:10px;padding:10px 14px;background:var(--accent);color:#fff;cursor:pointer}
 button.sec{background:transparent;color:var(--text);border:1px solid var(--border)}
-#map{height:52vh;min-height:280px;width:100%}
+button.chico{padding:6px 10px;font-size:13px}
+button:disabled{opacity:.5}
+.tab{display:none}
+.tab.activa{display:block}
 .panel{background:var(--card);margin:12px 16px;padding:14px;border-radius:14px}
-#estado{border-left:8px solid var(--n-gris)}
-#estado[data-nivel="verde"]{border-left-color:var(--n-verde)}
-#estado[data-nivel="amarillo"]{border-left-color:var(--n-amarillo)}
-#estado[data-nivel="naranja"]{border-left-color:var(--n-naranja)}
-#estado[data-nivel="rojo"]{border-left-color:var(--n-rojo)}
-#estadoTitulo{font-size:19px;font-weight:700;margin:0 0 6px}
-#estadoDetalle{font-size:14px;line-height:1.5}
-#estadoDetalle div{margin-top:2px}
-.botones{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+.small{font-size:13px;color:var(--muted);margin-top:8px;line-height:1.4}
+.warn{color:var(--warn);font-weight:600}
+a{color:var(--accent)}
+/* Ahora */
+.cabecera{background:linear-gradient(160deg,var(--cielo1),var(--cielo2));color:#fff;padding:16px 16px 20px;border-radius:0 0 22px 22px}
+.lugar{display:flex;justify-content:space-between;align-items:center;gap:10px;font-size:17px;font-weight:600}
+.lugar button{background:rgba(255,255,255,.18);color:#fff}
+.actual{display:flex;align-items:center;gap:14px;margin-top:10px}
+.icono-grande{font-size:64px;line-height:1}
+.temp{font-size:58px;font-weight:300;line-height:1}
+.desc{font-size:17px;margin-top:4px}
+.cabecera .small{color:rgba(255,255,255,.85)}
+#estado,#estadoAlarma{border-left:8px solid var(--n-gris)}
+[data-nivel="verde"]{border-left-color:var(--n-verde)!important}
+[data-nivel="amarillo"]{border-left-color:var(--n-amarillo)!important}
+[data-nivel="naranja"]{border-left-color:var(--n-naranja)!important}
+[data-nivel="rojo"]{border-left-color:var(--n-rojo)!important}
+.estadoTitulo{font-size:18px;font-weight:700;margin:0 0 6px}
+.estadoDetalle{font-size:14px;line-height:1.5}
+.horas{display:flex;gap:6px;overflow-x:auto;padding:4px 0 6px;scroll-snap-type:x proximity}
+.hora{flex:0 0 58px;text-align:center;padding:8px 2px;border-radius:12px;background:rgba(127,127,127,.08);scroll-snap-align:start}
+.hora .e{font-size:24px;margin:4px 0}
+.hora .t{font-weight:600}
+.hora .p{font-size:12px;color:#1e88e5;min-height:15px}
+.grilla{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.dato{background:rgba(127,127,127,.08);border-radius:12px;padding:10px}
+.dato .n{font-size:12px;color:var(--muted)}
+.dato .v{font-size:17px;font-weight:600;margin-top:2px}
+/* Pronóstico */
+.dia{display:grid;grid-template-columns:72px 34px 1fr 80px;align-items:center;gap:8px;padding:10px 0;border-bottom:1px solid var(--border)}
+.dia:last-child{border-bottom:0}
+.dia .e{font-size:26px;text-align:center}
+.dia .p{font-size:13px;color:#1e88e5}
+.dia .mm{text-align:right;font-weight:600}
+.dia .mm span{color:var(--muted);font-weight:400}
+details summary{cursor:pointer;font-weight:600}
+table{width:100%;border-collapse:collapse;font-size:14px;margin-top:8px}
+td,th{padding:6px 4px;text-align:right;border-bottom:1px solid var(--border)}
+td:first-child,th:first-child{text-align:left}
+/* Radar */
+#map{height:calc(100vh - 330px);min-height:300px;width:100%}
 .row{display:flex;gap:10px;align-items:center}
 .row input[type=range]{flex:1;min-width:0}
 .seg{display:flex;gap:6px;margin-bottom:12px}
 .seg button{flex:1;background:transparent;color:var(--text);border:1px solid var(--border);padding:9px 8px;font-size:14px}
 .seg button.on{background:var(--accent);color:#fff;border-color:var(--accent)}
-.small{font-size:13px;color:var(--muted);margin-top:8px;line-height:1.4}
-.warn{color:var(--warn);font-weight:600}
 label.check{display:flex;gap:8px;align-items:center;font-size:14px;margin-top:12px}
-label.check input{width:20px;height:20px}
-table{width:100%;border-collapse:collapse;font-size:14px;margin-top:8px}
-td,th{padding:6px 4px;text-align:right;border-bottom:1px solid var(--border)}
-td:first-child,th:first-child{text-align:left}
-a{color:var(--accent)}
+label.check input{width:20px;height:20px;flex:0 0 auto}
+.botones{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+/* Barra de pestañas */
+nav.tabs{position:fixed;left:0;right:0;bottom:0;display:flex;background:var(--card);border-top:1px solid var(--border);padding-bottom:env(safe-area-inset-bottom);z-index:1000}
+nav.tabs button{flex:1;background:transparent;color:var(--muted);border-radius:0;padding:8px 2px 10px;font-size:12px;display:flex;flex-direction:column;align-items:center;gap:2px}
+nav.tabs button .ic{font-size:21px}
+nav.tabs button.on{color:var(--accent);font-weight:700}
 </style>
 </head>
 <body>
-<header>
-  <h1>Mi Clima</h1>
-  <button id="btnLoc" type="button">Mi ubicación</button>
-</header>
 
-<div class="panel" id="estado" data-nivel="gris">
-  <p id="estadoTitulo">Revisando el radar…</p>
-  <div id="estadoDetalle"></div>
-  <div class="botones">
-    <button id="btnAlarma" type="button">🔔 Activar alarma</button>
+<!-- ============ AHORA ============ -->
+<section id="tab-ahora" class="tab activa">
+  <div class="cabecera">
+    <div class="lugar"><span id="lugar">Mendoza</span><button id="btnLoc" class="chico" type="button">📍 Mi ubicación</button></div>
+    <div class="actual">
+      <div id="iconoActual" class="icono-grande">⏳</div>
+      <div>
+        <div id="tempActual" class="temp">--°</div>
+        <div id="descActual" class="desc">Cargando el clima…</div>
+      </div>
+    </div>
+    <div id="sensacion" class="small"></div>
   </div>
-  <label class="check"><input type="checkbox" id="chkPantalla"> Mantener la pantalla encendida (para la moto)</label>
-  <div class="small">La alarma usa el radar y los rayos en tu ubicación, e ignora el "ruido" que el radar marca siempre sobre los cerros y la ciudad. Detecta bien las tormentas fuertes; la lluvia débil sobre la ciudad se le puede escapar. Es una ayuda: no reemplaza las alertas oficiales.</div>
-</div>
 
-<div id="map"></div>
-
-<div class="panel">
-  <div class="seg" role="group" aria-label="Fuente del radar">
-    <button id="srcMza" type="button" class="on">Radar Mendoza (HD)</button>
-    <button id="srcRv" type="button">RainViewer</button>
+  <div class="panel" id="estado" data-nivel="gris">
+    <p class="estadoTitulo">Revisando el radar…</p>
+    <div class="estadoDetalle"></div>
+    <div class="botones"><button class="sec chico" type="button" data-ir="radar">🛰️ Ver radar</button><button class="sec chico" type="button" data-ir="alarma">🔔 Alarma</button></div>
   </div>
-  <div class="row">
-    <button id="btnPlay" type="button" aria-label="Pausar o reproducir">⏸</button>
-    <input id="slider" type="range" min="0" max="0" value="0" aria-label="Elegir imagen del radar">
+
+  <div class="panel">
+    <strong>Próximas 24 horas</strong>
+    <div id="horas" class="horas"></div>
   </div>
-  <div id="radarInfo" class="small">Buscando imágenes del radar…</div>
-  <label class="check" id="hailWrap"><input type="checkbox" id="chkHail"> Mostrar probabilidad de granizo</label>
-  <label class="check"><input type="checkbox" id="chkRayos" checked> Mostrar rayos (últimos 15 min)</label>
-  <div id="rayosInfo" class="small"></div>
-  <div class="small">Amarillo y rojo: lluvia fuerte o posible granizo. Mirá hacia dónde se mueven las manchas en la animación.</div>
-</div>
 
-<div class="panel">
-  <strong>Lluvia próximas 24 h (mm por hora)</strong>
-  <div class="small">Los modelos sirven para planificar el día. Para saber si te agarra una tormenta en la próxima hora, mirá el radar.</div>
-  <div id="forecast" class="small">Cargando pronóstico…</div>
-</div>
+  <div class="panel">
+    <div id="detalles" class="grilla"></div>
+    <div id="actualizado" class="small"></div>
+  </div>
+</section>
 
-<div class="panel small">
-  Radar y rayos: Dirección de Agricultura y Contingencias Climáticas, Gobierno de Mendoza
-  (<a href="https://www2.contingencias.mendoza.gov.ar/radar/web/" target="_blank" rel="noopener">ver radar oficial</a>), rayos del satélite GOES-19 (NOAA).
-  Radar regional: RainViewer (Weather data by RainViewer). Pronóstico: Open-Meteo (CC BY 4.0). Mapa: © OpenStreetMap. App de uso personal.
-</div>
+<!-- ============ RADAR ============ -->
+<section id="tab-radar" class="tab">
+  <div id="map"></div>
+  <div class="panel">
+    <div class="seg" role="group" aria-label="Fuente del radar">
+      <button id="srcMza" type="button" class="on">Radar Mendoza (HD)</button>
+      <button id="srcRv" type="button">RainViewer</button>
+    </div>
+    <div class="row">
+      <button id="btnPlay" type="button" aria-label="Pausar o reproducir">⏸</button>
+      <input id="slider" type="range" min="0" max="0" value="0" aria-label="Elegir imagen del radar">
+    </div>
+    <div id="radarInfo" class="small">Buscando imágenes del radar…</div>
+    <label class="check" id="limpioWrap"><input type="checkbox" id="chkLimpio" checked> Radar limpio (sin el ruido de cerros y ciudad)</label>
+    <label class="check" id="hailWrap"><input type="checkbox" id="chkHail"> Mostrar probabilidad de granizo</label>
+    <label class="check"><input type="checkbox" id="chkRayos" checked> Mostrar rayos (últimos 15 min)</label>
+    <div id="rayosInfo" class="small"></div>
+    <div class="small">Amarillo y rojo: lluvia fuerte o posible granizo. Mirá hacia dónde se mueven las manchas en la animación.</div>
+  </div>
+</section>
+
+<!-- ============ PRONÓSTICO ============ -->
+<section id="tab-pronostico" class="tab">
+  <div class="panel">
+    <strong>Próximos 7 días</strong>
+    <div id="dias"></div>
+  </div>
+  <div class="panel">
+    <details id="detModelos">
+      <summary>Comparar modelos: lluvia de las próximas 24 h</summary>
+      <div class="small">Los modelos sirven para planificar el día. Para saber si te agarra una tormenta en la próxima hora, mirá el radar.</div>
+      <div id="forecast" class="small">Abrí esta sección para cargar la comparación.</div>
+    </details>
+  </div>
+  <div class="panel small">
+    Pronóstico: Open-Meteo (CC BY 4.0). Radar y rayos: Dirección de Agricultura y Contingencias Climáticas, Gobierno de Mendoza
+    (<a href="https://www2.contingencias.mendoza.gov.ar/radar/web/" target="_blank" rel="noopener">radar oficial</a>), rayos del satélite GOES-19 (NOAA).
+    Radar regional: RainViewer (Weather data by RainViewer). Mapa: © OpenStreetMap. Nombre del lugar: OpenStreetMap Nominatim. App de uso personal.
+  </div>
+</section>
+
+<!-- ============ ALARMA ============ -->
+<section id="tab-alarma" class="tab">
+  <div class="panel" id="estadoAlarma" data-nivel="gris">
+    <p class="estadoTitulo">Revisando el radar…</p>
+    <div class="estadoDetalle"></div>
+  </div>
+  <div class="panel">
+    <strong>Con la app abierta</strong>
+    <div class="botones"><button id="btnAlarma" type="button">🔔 Activar alarma con sonido</button></div>
+    <label class="check"><input type="checkbox" id="chkPantalla"> Mantener la pantalla encendida (para la moto)</label>
+    <div class="small">Suena y vibra si se acerca una tormenta, y va siguiendo tu ubicación mientras la app está abierta.</div>
+  </div>
+  <div class="panel">
+    <strong>Con la pantalla apagada</strong>
+    <div class="botones">
+      <button id="btnPush" type="button">📲 Activar avisos con pantalla apagada</button>
+      <button id="btnPrueba" class="sec" type="button" disabled>Enviar aviso de prueba</button>
+    </div>
+    <div id="pushInfo" class="small"></div>
+    <div class="small">Tu intermediario revisa el radar y los rayos cada 5 minutos en tu <b>última ubicación conocida</b> (se actualiza cada vez que abrís la app) y te manda una notificación si hay peligro.</div>
+  </div>
+  <div class="panel small">
+    La alarma usa el radar y los rayos en tu ubicación, e ignora el "ruido" que el radar marca siempre sobre los cerros y la ciudad.
+    Detecta bien las tormentas fuertes; la lluvia débil sobre la ciudad se le puede escapar. Es una ayuda: no reemplaza las alertas oficiales.
+  </div>
+</section>
+
+<nav class="tabs" aria-label="Secciones">
+  <button type="button" data-tab="ahora" class="on"><span class="ic">🌤️</span>Ahora</button>
+  <button type="button" data-tab="radar"><span class="ic">🛰️</span>Radar</button>
+  <button type="button" data-tab="pronostico"><span class="ic">📅</span>Pronóstico</button>
+  <button type="button" data-tab="alarma"><span class="ic">🔔</span>Alarma</button>
+</nav>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 "use strict";
 
-// ---------- Configuración ----------
-// Dirección del intermediario (Cloudflare Worker). Vacío = sin rayos ni alarma.
+// =================== Configuración ===================
 const PROXY_PRODUCCION = "https://mi-clima-proxy.bustosmartin181.workers.dev";
 let PROXY = PROXY_PRODUCCION;
 try {
-  // Solo para pruebas en la computadora: ?proxy=http://127.0.0.1:8787
   const p = new URLSearchParams(location.search).get("proxy");
-  if (p && /^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/.test(p)) PROXY = p;
+  if (p && /^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/.test(p)) PROXY = p; // solo para pruebas en la computadora
 } catch (e) { /* sin parámetros */ }
 
 const MZA_BASE = "https://www2.contingencias.mendoza.gov.ar/radar/web/";
-// Mismos límites que usa el visor oficial: imagen de 500 x 700 km (1 km por punto).
 const MZA_BOUNDS = (() => {
   const oLat = -34.0, oLon = -68.0, kmPorGradoLat = 110.924, kmPorGradoLon = 92.425, ajuste = 0.046;
-  return [
-    [oLat - 250 / kmPorGradoLat + ajuste, oLon - 250 / kmPorGradoLon],
-    [oLat + 450 / kmPorGradoLat + ajuste, oLon + 250 / kmPorGradoLon]
-  ];
+  return [[oLat - 250 / kmPorGradoLat + ajuste, oLon - 250 / kmPorGradoLon], [oLat + 450 / kmPorGradoLat + ajuste, oLon + 250 / kmPorGradoLon]];
 })();
 const ANCHO = 500, ALTO = 700;
-const PASO_MS = 2 * 60 * 1000;   // el radar de Mendoza publica una imagen cada 2 minutos
-const CUADROS = 20;              // 20 imágenes = últimos 40 minutos
-const ATRASADO_MIN = 20;
-const OPACIDAD_MZA = 0.85;
-const RAYOS_CADA_MS = 30 * 1000;
-const RAYOS_VIDA_MS = 15 * 60 * 1000;
-const DEFAULT_POS = { lat: -32.89, lon: -68.84 }; // Mendoza capital
+const PASO_MS = 2 * 60 * 1000, CUADROS = 20, ATRASADO_MIN = 20, OPACIDAD_MZA = 0.85;
+const RAYOS_CADA_MS = 30 * 1000, RAYOS_VIDA_MS = 15 * 60 * 1000, CLIMA_CADA_MS = 15 * 60 * 1000;
+const DEFAULT_POS = { lat: -32.89, lon: -68.84 };
 
-// Escala oficial de colores del radar (dBZ) y de probabilidad de granizo (%)
 const rgb = (r, g, b) => (r << 16) | (g << 8) | b;
 const DBZ_POR_COLOR = new Map([
   [rgb(211, 211, 211), 70], [rgb(128, 128, 128), 65], [rgb(253, 52, 28), 60], [rgb(254, 95, 5), 57],
@@ -132,97 +216,255 @@ const DBZ_POR_COLOR = new Map([
   [rgb(192, 100, 135), 42], [rgb(200, 15, 134), 39], [rgb(110, 13, 198), 36], [rgb(28, 71, 232), 35],
   [rgb(8, 127, 219), 30], [rgb(0, 112, 0), 20], [rgb(0, 90, 0), 10], [rgb(72, 61, 139), 5]
 ]);
-const GRANIZO_POR_COLOR = new Map([
-  [rgb(255, 0, 0), 90], [rgb(255, 69, 0), 80], [rgb(255, 127, 80), 70], [rgb(154, 205, 50), 60], [rgb(0, 100, 0), 50]
-]);
-const NUCLEO_DBZ = 35, NUCLEO_MIN_PX = 6;   // núcleo de tormenta: al menos 6 km² con 35 dBZ o más
-const LLUVIA_DBZ = 20, LLUVIA_MIN_PX = 10;  // lluvia: al menos 10 km² con 20 dBZ o más
+const GRANIZO_POR_COLOR = new Map([[rgb(255, 0, 0), 90], [rgb(255, 69, 0), 80], [rgb(255, 127, 80), 70], [rgb(154, 205, 50), 60], [rgb(0, 100, 0), 50]]);
+const NUCLEO_DBZ = 35, NUCLEO_MIN_PX = 6, LLUVIA_DBZ = 20, LLUVIA_MIN_PX = 10, SUELTOS_MIN_PX = 6;
 
-// ---------- Estado ----------
+// =================== Estado ===================
 let pos = { ...DEFAULT_POS };
-let map, posMarker = null;
-let usarProxy = false;
-let fuente = "mza";
-let mzaFrames = [];
-let rvFrames = [];
-let rvCargadoEn = 0;
+let map = null, posMarker = null;
+let usarProxy = false, techo = null;
+let fuente = "mza", mzaFrames = [], rvFrames = [], rvCargadoEn = 0;
 let idx = 0, playing = true, pausaFinal = 0;
-let mzaOverlay = null, hailOverlay = null, hailOn = false;
-let precargas = {};
-let actualizando = false;
-const analisis = new Map();   // url -> resultado del análisis de esa imagen
-let techo = null;             // "techo de ruido" de cada punto (ruido.png): lo que el radar marca ahí sin lluvia
-let rayos = new Map();        // clave -> { lat, lon, t, marcador }
-let capaRayos = null;
-let rayosOk = null;
+let mzaOverlay = null, hailOverlay = null, hailOn = false, limpio = true;
+let precargas = {}, actualizando = false;
+const analisis = new Map();     // url de la imagen -> análisis (grilla limpia, núcleos, imagen limpia)
+let rayos = new Map(), capaRayos = null, rayosOk = null;
 let alarmaActiva = false, nivelAnterior = "gris", audioCtx = null, swReg = null, vigilaUbicacion = null, bloqueoPantalla = null;
+let ultimaUbicacionEnviada = null;
+let tabActual = "ahora";
 
 const $ = id => document.getElementById(id);
 const info = $("radarInfo");
-
 function pad(n) { return String(n).padStart(2, "0"); }
 function horaLocal(t) { return new Date(t).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit", hourCycle: "h23" }); }
 function kmEntre(lat1, lon1, lat2, lon2) {
-  const x = (lon2 - lon1) * Math.cos((lat1 + lat2) * Math.PI / 360) * 111.32;
-  const y = (lat2 - lat1) * 110.574;
+  const x = (lon2 - lon1) * Math.cos((lat1 + lat2) * Math.PI / 360) * 111.32, y = (lat2 - lat1) * 110.574;
   return Math.hypot(x, y);
 }
 function km(d) { return d < 10 ? d.toFixed(1).replace(".", ",") : String(Math.round(d)); }
+function leerLocal(clave) { try { return JSON.parse(localStorage.getItem(clave) || "null"); } catch (e) { return null; } }
+function guardarLocal(clave, valor) { try { localStorage.setItem(clave, JSON.stringify(valor)); } catch (e) { /* sin almacenamiento */ } }
 
+// =================== Pestañas ===================
+function mostrarTab(nombre) {
+  tabActual = nombre;
+  document.querySelectorAll(".tab").forEach(s => s.classList.toggle("activa", s.id === "tab-" + nombre));
+  document.querySelectorAll("nav.tabs button").forEach(b => b.classList.toggle("on", b.dataset.tab === nombre));
+  if (nombre === "radar" && map) setTimeout(() => map.invalidateSize(), 50);
+  window.scrollTo(0, 0);
+}
+document.querySelectorAll("nav.tabs button").forEach(b => b.addEventListener("click", () => mostrarTab(b.dataset.tab)));
+document.querySelectorAll("[data-ir]").forEach(b => b.addEventListener("click", () => mostrarTab(b.dataset.ir)));
+
+// =================== Clima (Open-Meteo) ===================
+const CODIGOS = {
+  0: ["Despejado", "☀️", "🌙"], 1: ["Mayormente despejado", "🌤️", "🌙"], 2: ["Parcialmente nublado", "⛅", "☁️"], 3: ["Nublado", "☁️", "☁️"],
+  45: ["Niebla", "🌫️", "🌫️"], 48: ["Niebla con escarcha", "🌫️", "🌫️"],
+  51: ["Llovizna débil", "🌦️", "🌧️"], 53: ["Llovizna", "🌦️", "🌧️"], 55: ["Llovizna intensa", "🌧️", "🌧️"],
+  56: ["Llovizna helada", "🌧️", "🌧️"], 57: ["Llovizna helada intensa", "🌧️", "🌧️"],
+  61: ["Lluvia débil", "🌦️", "🌧️"], 63: ["Lluvia", "🌧️", "🌧️"], 65: ["Lluvia fuerte", "🌧️", "🌧️"],
+  66: ["Lluvia helada", "🌧️", "🌧️"], 67: ["Lluvia helada fuerte", "🌧️", "🌧️"],
+  71: ["Nevada débil", "🌨️", "🌨️"], 73: ["Nevada", "🌨️", "🌨️"], 75: ["Nevada fuerte", "❄️", "❄️"], 77: ["Granos de nieve", "🌨️", "🌨️"],
+  80: ["Chaparrones débiles", "🌦️", "🌧️"], 81: ["Chaparrones", "🌧️", "🌧️"], 82: ["Chaparrones fuertes", "⛈️", "⛈️"],
+  85: ["Chaparrones de nieve", "🌨️", "🌨️"], 86: ["Chaparrones de nieve fuertes", "❄️", "❄️"],
+  95: ["Tormenta", "⛈️", "⛈️"], 96: ["Tormenta con granizo", "⛈️", "⛈️"], 99: ["Tormenta fuerte con granizo", "⛈️", "⛈️"]
+};
+function tiempo(codigo, esDia = 1) {
+  const c = CODIGOS[codigo] || ["Sin datos", "❔", "❔"];
+  return { texto: c[0], icono: esDia ? c[1] : c[2] };
+}
+function direccion(grados) {
+  const d = ["norte", "noreste", "este", "sudeste", "sur", "sudoeste", "oeste", "noroeste"];
+  return d[Math.round(((grados % 360) + 360) % 360 / 45) % 8];
+}
+function nombreDia(fecha, i) {
+  if (i === 0) return "Hoy";
+  if (i === 1) return "Mañana";
+  const d = new Date(fecha + "T12:00:00");
+  const n = d.toLocaleDateString("es-AR", { weekday: "long" });
+  return n.charAt(0).toUpperCase() + n.slice(1);
+}
+const r0 = v => (typeof v === "number" ? Math.round(v) : "–");
+
+async function cargarClima() {
+  const clave = "miClimaClima";
+  const guardado = leerLocal(clave);
+  if (guardado && guardado.datos) dibujarClima(guardado.datos, guardado.t); // se ve al instante, aunque no haya señal
+  try {
+    const url = "https://api.open-meteo.com/v1/forecast" +
+      `?latitude=${pos.lat.toFixed(4)}&longitude=${pos.lon.toFixed(4)}` +
+      "&current=temperature_2m,relative_humidity_2m,apparent_temperature,is_day,precipitation,weather_code,surface_pressure,wind_speed_10m,wind_direction_10m,wind_gusts_10m" +
+      "&hourly=temperature_2m,precipitation_probability,weather_code,is_day" +
+      "&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,sunrise,sunset,uv_index_max,wind_speed_10m_max,wind_gusts_10m_max" +
+      "&timezone=auto&forecast_days=7";
+    const r = await fetch(url);
+    if (r.status === 429) throw new Error("Open-Meteo está limitando las consultas, probá más tarde");
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    const datos = await r.json();
+    if (!datos.current || !datos.daily) throw new Error("datos incompletos");
+    guardarLocal(clave, { datos, t: Date.now() });
+    dibujarClima(datos, Date.now());
+  } catch (e) {
+    $("actualizado").textContent = (guardado ? "Mostrando el último pronóstico guardado. " : "") + "No pude actualizar el clima: " + e.message;
+  }
+}
+
+function dibujarClima(d, t) {
+  const c = d.current, dia = d.daily, h = d.hourly;
+  const ahoraTxt = tiempo(c.weather_code, c.is_day);
+  $("iconoActual").textContent = ahoraTxt.icono;
+  $("tempActual").textContent = r0(c.temperature_2m) + "°";
+  $("descActual").textContent = ahoraTxt.texto;
+  $("sensacion").textContent = `Sensación ${r0(c.apparent_temperature)}° · Máx ${r0(dia.temperature_2m_max[0])}° / Mín ${r0(dia.temperature_2m_min[0])}°`;
+
+  // Próximas 24 horas
+  const cont = $("horas");
+  cont.textContent = "";
+  const desde = Date.now() - 3600 * 1000;
+  let inicio = h.time.findIndex(x => new Date(x).getTime() >= desde);
+  if (inicio < 0) inicio = 0;
+  for (let i = inicio; i < inicio + 24 && i < h.time.length; i++) {
+    const tt = tiempo(h.weather_code[i], h.is_day ? h.is_day[i] : 1);
+    const div = document.createElement("div");
+    div.className = "hora";
+    const prob = h.precipitation_probability ? h.precipitation_probability[i] : null;
+    div.innerHTML = `<div class="small" style="margin:0">${i === inicio ? "Ahora" : String(h.time[i]).slice(11, 16)}</div><div class="e"></div><div class="t"></div><div class="p"></div>`;
+    div.querySelector(".e").textContent = tt.icono;
+    div.querySelector(".t").textContent = r0(h.temperature_2m[i]) + "°";
+    div.querySelector(".p").textContent = typeof prob === "number" && prob >= 10 ? `💧${prob}%` : "";
+    cont.appendChild(div);
+  }
+
+  // Detalles de hoy
+  const datos = [
+    ["Humedad", `${r0(c.relative_humidity_2m)}%`],
+    ["Viento", `${r0(c.wind_speed_10m)} km/h del ${direccion(c.wind_direction_10m)}`],
+    ["Ráfagas", `${r0(c.wind_gusts_10m)} km/h`],
+    ["Presión", `${r0(c.surface_pressure)} hPa`],
+    ["Índice UV (máx.)", `${r0(dia.uv_index_max[0])}`],
+    ["Lluvia hoy", `${typeof dia.precipitation_sum[0] === "number" ? dia.precipitation_sum[0].toFixed(1).replace(".", ",") : "–"} mm`],
+    ["Sale el sol", String(dia.sunrise[0]).slice(11, 16)],
+    ["Se pone el sol", String(dia.sunset[0]).slice(11, 16)]
+  ];
+  const det = $("detalles");
+  det.textContent = "";
+  for (const [n, v] of datos) {
+    const div = document.createElement("div");
+    div.className = "dato";
+    div.innerHTML = '<div class="n"></div><div class="v"></div>';
+    div.querySelector(".n").textContent = n;
+    div.querySelector(".v").textContent = v;
+    det.appendChild(div);
+  }
+  $("actualizado").textContent = `Pronóstico actualizado a las ${horaLocal(t)}.`;
+
+  // 7 días
+  const dias = $("dias");
+  dias.textContent = "";
+  for (let i = 0; i < dia.time.length; i++) {
+    const tt = tiempo(dia.weather_code[i], 1);
+    const fila = document.createElement("div");
+    fila.className = "dia";
+    fila.innerHTML = '<div class="n"></div><div class="e"></div><div><div class="d small" style="margin:0"></div><div class="p"></div></div><div class="mm"></div>';
+    fila.querySelector(".n").textContent = nombreDia(dia.time[i], i);
+    fila.querySelector(".e").textContent = tt.icono;
+    fila.querySelector(".d").textContent = tt.texto;
+    const prob = dia.precipitation_probability_max ? dia.precipitation_probability_max[i] : null;
+    fila.querySelector(".p").textContent = typeof prob === "number" && prob >= 10 ? `💧 ${prob}%` + (dia.precipitation_sum[i] >= 0.1 ? ` · ${dia.precipitation_sum[i].toFixed(1).replace(".", ",")} mm` : "") : "";
+    fila.querySelector(".mm").innerHTML = `${r0(dia.temperature_2m_max[i])}° <span>${r0(dia.temperature_2m_min[i])}°</span>`;
+    dias.appendChild(fila);
+  }
+}
+
+// Comparación de modelos (se carga solo si abrís esa sección)
+async function cargarModelos() {
+  const el = $("forecast");
+  el.textContent = "Cargando…";
+  try {
+    const url = "https://api.open-meteo.com/v1/forecast" +
+      `?latitude=${pos.lat.toFixed(4)}&longitude=${pos.lon.toFixed(4)}` +
+      "&hourly=precipitation&models=gfs_seamless,ecmwf_ifs025,icon_seamless&timezone=auto&forecast_days=2";
+    const r = await fetch(url);
+    if (r.status === 429) throw new Error("Open-Meteo está limitando las consultas, probá más tarde");
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    const d = await r.json();
+    const hourly = d.hourly || {}, horas = hourly.time || [];
+    let modelos = [["GFS", "precipitation_gfs_seamless"], ["ECMWF", "precipitation_ecmwf_ifs025"], ["ICON", "precipitation_icon_seamless"]].filter(([, k]) => Array.isArray(hourly[k]));
+    if (!modelos.length && Array.isArray(hourly.precipitation)) modelos = [["Modelo", "precipitation"]];
+    if (!modelos.length || !horas.length) throw new Error("datos incompletos");
+    let inicio = horas.findIndex(h => new Date(h).getTime() >= Date.now() - 3600 * 1000);
+    if (inicio < 0) inicio = 0;
+    let filas = "", maximo = 0;
+    for (let i = inicio; i < inicio + 24 && i < horas.length; i++) {
+      const celdas = modelos.map(([, k]) => { const v = hourly[k][i]; if (typeof v === "number" && v > maximo) maximo = v; return typeof v === "number" ? v.toFixed(1) : "-"; });
+      filas += `<tr><td>${String(horas[i]).slice(11, 16)}</td>${celdas.map(c => `<td>${c}</td>`).join("")}</tr>`;
+    }
+    el.innerHTML = `<p>Máximo esperado en 24 h: <b>${maximo.toFixed(1)} mm/h</b> (el modelo más lluvioso)</p><table><tr><th>Hora</th>${modelos.map(([n]) => `<th>${n}</th>`).join("")}</tr>${filas}</table>`;
+  } catch (e) {
+    el.textContent = "No pude cargar la comparación: " + e.message;
+  }
+}
+$("detModelos").addEventListener("toggle", e => { if (e.target.open) cargarModelos(); });
+
+// Nombre del lugar (OpenStreetMap Nominatim), guardado para no pedirlo de nuevo
+async function cargarLugar() {
+  const clave = `${pos.lat.toFixed(2)},${pos.lon.toFixed(2)}`;
+  const guardados = leerLocal("miClimaLugares") || {};
+  if (guardados[clave]) { $("lugar").textContent = guardados[clave]; return; }
+  try {
+    const r = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${pos.lat.toFixed(4)}&lon=${pos.lon.toFixed(4)}&zoom=10&accept-language=es`);
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    const d = await r.json(), a = d.address || {};
+    const lugar = a.city || a.town || a.village || a.municipality || a.county || a.state_district || "Mi ubicación";
+    const prov = a.state ? `, ${a.state}` : "";
+    const nombre = lugar + (prov && !prov.includes(lugar) ? prov : "");
+    $("lugar").textContent = nombre;
+    guardados[clave] = nombre;
+    guardarLocal("miClimaLugares", guardados);
+  } catch (e) {
+    $("lugar").textContent = "Mi ubicación";
+  }
+}
+
+// =================== Radar: geometría y análisis ===================
 function mzaUrl(t, tipo) {
   const d = new Date(t);
   const carpeta = `${d.getUTCFullYear()}${pad(d.getUTCMonth() + 1)}${pad(d.getUTCDate())}`;
   const hora = `${pad(d.getUTCHours())}${pad(d.getUTCMinutes())}00`;
   return usarProxy ? `${PROXY}/radar/${carpeta}/${hora}_${tipo}.png` : `${MZA_BASE}${carpeta}/${hora}_${tipo}.png`;
 }
-
 function precargar(url, timeoutMs = 15000) {
   if (precargas[url]) return Promise.resolve(true);
   return new Promise(resolve => {
     const img = new Image();
-    if (usarProxy) img.crossOrigin = "anonymous"; // permite leer los colores para la alarma
+    if (usarProxy) img.crossOrigin = "anonymous";
     let listo = false;
-    const fin = ok => {
-      if (listo) return;
-      listo = true;
-      if (ok) precargas[url] = img;
-      resolve(ok);
-    };
+    const fin = ok => { if (listo) return; listo = true; if (ok) precargas[url] = img; resolve(ok); };
     img.onload = () => fin(true);
     img.onerror = () => fin(false);
     setTimeout(() => fin(false), timeoutMs);
     img.src = url;
   });
 }
-
-// ---------- Ubicación sobre la imagen del radar (igual que la ubica el mapa) ----------
 const mercY = lat => Math.log(Math.tan(Math.PI / 4 + lat * Math.PI / 360));
-const Y_N = mercY(MZA_BOUNDS[1][0]), Y_S = mercY(MZA_BOUNDS[0][0]);
-const LON_O = MZA_BOUNDS[0][1], LON_E = MZA_BOUNDS[1][1];
+const Y_N = mercY(MZA_BOUNDS[1][0]), Y_S = mercY(MZA_BOUNDS[0][0]), LON_O = MZA_BOUNDS[0][1], LON_E = MZA_BOUNDS[1][1];
 const LON_COL = new Float64Array(ANCHO), LAT_FILA = new Float64Array(ALTO);
 for (let x = 0; x < ANCHO; x++) LON_COL[x] = LON_O + (x + 0.5) / ANCHO * (LON_E - LON_O);
-for (let y = 0; y < ALTO; y++) {
-  const my = Y_N - (y + 0.5) / ALTO * (Y_N - Y_S);
-  LAT_FILA[y] = (2 * Math.atan(Math.exp(my)) - Math.PI / 2) * 180 / Math.PI;
-}
-function aPixel(lat, lon) {
-  return { x: (lon - LON_O) / (LON_E - LON_O) * ANCHO - 0.5, y: (Y_N - mercY(lat)) / (Y_N - Y_S) * ALTO - 0.5 };
-}
-function dentroDelRadar(lat, lon) {
-  const p = aPixel(lat, lon);
-  return p.x >= 0 && p.y >= 0 && p.x <= ANCHO - 1 && p.y <= ALTO - 1;
-}
+for (let y = 0; y < ALTO; y++) LAT_FILA[y] = (2 * Math.atan(Math.exp(Y_N - (y + 0.5) / ALTO * (Y_N - Y_S))) - Math.PI / 2) * 180 / Math.PI;
+function aPixel(lat, lon) { return { x: (lon - LON_O) / (LON_E - LON_O) * ANCHO - 0.5, y: (Y_N - mercY(lat)) / (Y_N - Y_S) * ALTO - 0.5 }; }
+function dentroDelRadar(lat, lon) { const p = aPixel(lat, lon); return p.x >= 0 && p.y >= 0 && p.x <= ANCHO - 1 && p.y <= ALTO - 1; }
 
-// ---------- Análisis de las imágenes (para la alarma) ----------
 const lienzo = document.createElement("canvas");
 lienzo.width = ANCHO; lienzo.height = ALTO;
 const ctx2d = lienzo.getContext("2d", { willReadFrequently: true });
-const pila = new Int32Array(ANCHO * ALTO);
+const pila = new Int32Array(ANCHO * ALTO), compBuf = new Int32Array(ANCHO * ALTO), vistoBuf = new Uint8Array(ANCHO * ALTO);
 
-function leerGrilla(img, colores) {
+function leerPixeles(img) {
   ctx2d.clearRect(0, 0, ANCHO, ALTO);
   ctx2d.drawImage(img, 0, 0, ANCHO, ALTO);
-  const d = ctx2d.getImageData(0, 0, ANCHO, ALTO).data; // falla si la imagen no vino por el intermediario
+  return ctx2d.getImageData(0, 0, ANCHO, ALTO); // falla si la imagen no vino por el intermediario
+}
+function aGrilla(d, colores) {
   const grilla = new Uint8Array(ANCHO * ALTO);
   for (let i = 0, p = 0; i < grilla.length; i++, p += 4) {
     if (d[p + 3] < 128) continue;
@@ -231,128 +473,116 @@ function leerGrilla(img, colores) {
   }
   return grilla;
 }
-
-function componentes(grilla, umbral, minPx) {
-  const visto = new Uint8Array(grilla.length);
-  const lista = [];
+// Recorre grupos de puntos vecinos con valor >= umbral
+function recorrerGrupos(grilla, umbral, alTerminar) {
+  vistoBuf.fill(0);
   for (let i = 0; i < grilla.length; i++) {
-    if (visto[i] || grilla[i] < umbral) continue;
-    let tope = 0, max = 0;
-    const px = [];
-    pila[tope++] = i; visto[i] = 1;
+    if (vistoBuf[i] || grilla[i] < umbral) continue;
+    let tope = 0, n = 0, max = 0;
+    pila[tope++] = i; vistoBuf[i] = 1;
     while (tope) {
       const k = pila[--tope];
-      px.push(k);
+      compBuf[n++] = k;
       if (grilla[k] > max) max = grilla[k];
-      const x = k % ANCHO, y = (k / ANCHO) | 0;
+      const x = k % ANCHO, y = (k - x) / ANCHO;
       for (let dy = -1; dy <= 1; dy++) {
+        const ny = y + dy;
+        if (ny < 0 || ny >= ALTO) continue;
         for (let dx = -1; dx <= 1; dx++) {
-          if (!dx && !dy) continue;
-          const nx = x + dx, ny = y + dy;
-          if (nx < 0 || ny < 0 || nx >= ANCHO || ny >= ALTO) continue;
+          const nx = x + dx;
+          if (nx < 0 || nx >= ANCHO) continue;
           const j = ny * ANCHO + nx;
-          if (!visto[j] && grilla[j] >= umbral) { visto[j] = 1; pila[tope++] = j; }
+          if (!vistoBuf[j] && grilla[j] >= umbral) { vistoBuf[j] = 1; pila[tope++] = j; }
         }
       }
     }
-    if (px.length >= minPx) lista.push({ px: Int32Array.from(px), max });
+    alTerminar(compBuf, n, max);
   }
+}
+function componentes(grilla, umbral, minPx) {
+  const lista = [];
+  recorrerGrupos(grilla, umbral, (c, n, max) => { if (n >= minPx) lista.push({ px: c.slice(0, n), max }); });
   return lista;
 }
 
+// Analiza una imagen: quita el ruido conocido y los puntos sueltos, y arma la versión "limpia" para el mapa
 function analizar(url, tipo) {
   if (analisis.has(url)) return analisis.get(url);
   const img = precargas[url];
   if (!img) return null;
+  const datos = leerPixeles(img);
+  const d = datos.data;
   let r;
   if (tipo === "dbz") {
-    const grilla = leerGrilla(img, DBZ_POR_COLOR);
-    // Quitar el ruido conocido: solo cuenta como lluvia lo que supera el techo de ruido de cada punto
+    const grilla = aGrilla(d, DBZ_POR_COLOR);
     if (techo) for (let i = 0; i < grilla.length; i++) if (grilla[i] <= techo[i]) grilla[i] = 0;
-    r = { grilla, nucleos: componentes(grilla, NUCLEO_DBZ, NUCLEO_MIN_PX), lluvias: componentes(grilla, LLUVIA_DBZ, LLUVIA_MIN_PX) };
+    recorrerGrupos(grilla, 1, (c, n) => { if (n < SUELTOS_MIN_PX) for (let k = 0; k < n; k++) grilla[c[k]] = 0; });
+    for (let i = 0, p = 3; i < grilla.length; i++, p += 4) if (!grilla[i]) d[p] = 0; // en la imagen limpia, lo borrado queda transparente
+    r = { grilla, nucleos: componentes(grilla, NUCLEO_DBZ, NUCLEO_MIN_PX), lluvias: componentes(grilla, LLUVIA_DBZ, LLUVIA_MIN_PX), limpia: null };
   } else {
-    r = { grilla: leerGrilla(img, GRANIZO_POR_COLOR) };
+    const grilla = aGrilla(d, GRANIZO_POR_COLOR);
+    const urlDbz = url.replace("_granizo.png", "_dbz.png");
+    const base = analisis.get(urlDbz);
+    // El granizo solo cuenta (y se dibuja) donde hay eco fuerte real al lado
+    for (let i = 0, p = 3; i < grilla.length; i++, p += 4) {
+      let fuerte = false;
+      if (grilla[i] && base) {
+        const x = i % ANCHO, y = (i - x) / ANCHO;
+        for (let dy = -1; dy <= 1 && !fuerte; dy++) for (let dx = -1; dx <= 1; dx++) {
+          const xx = x + dx, yy = y + dy;
+          if (xx >= 0 && yy >= 0 && xx < ANCHO && yy < ALTO && base.grilla[yy * ANCHO + xx] >= 40) { fuerte = true; break; }
+        }
+      }
+      if (!fuerte) { grilla[i] = 0; d[p] = 0; }
+    }
+    r = { grilla, limpia: null };
   }
+  ctx2d.putImageData(datos, 0, 0);
+  r.limpia = new Promise(res => lienzo.toBlob(b => res(b ? URL.createObjectURL(b) : null), "image/png"));
   analisis.set(url, r);
   return r;
 }
-
 function masCercano(comps, lat, lon) {
   let mejor = Infinity, maxDbz = 0;
-  for (const c of comps) {
-    for (const k of c.px) {
-      const d = kmEntre(lat, lon, LAT_FILA[(k / ANCHO) | 0], LON_COL[k % ANCHO]);
-      if (d < mejor) { mejor = d; maxDbz = c.max; }
-    }
+  for (const c of comps) for (const k of c.px) {
+    const d = kmEntre(lat, lon, LAT_FILA[(k / ANCHO) | 0], LON_COL[k % ANCHO]);
+    if (d < mejor) { mejor = d; maxDbz = c.max; }
   }
   return { km: mejor, maxDbz };
 }
-
 function maximoCerca(grilla, lat, lon, radioKm) {
-  const p = aPixel(lat, lon);
-  const r = Math.ceil(radioKm) + 1;
+  const p = aPixel(lat, lon), r = Math.ceil(radioKm) + 1;
   let max = 0;
-  for (let y = Math.max(0, Math.floor(p.y - r)); y <= Math.min(ALTO - 1, Math.ceil(p.y + r)); y++) {
+  for (let y = Math.max(0, Math.floor(p.y - r)); y <= Math.min(ALTO - 1, Math.ceil(p.y + r)); y++)
     for (let x = Math.max(0, Math.floor(p.x - r)); x <= Math.min(ANCHO - 1, Math.ceil(p.x + r)); x++) {
       const v = grilla[y * ANCHO + x];
       if (v > max && kmEntre(lat, lon, LAT_FILA[y], LON_COL[x]) <= radioKm) max = v;
     }
-  }
   return max;
 }
-
-// El granizo solo cuenta donde además hay eco fuerte real (sin ruido) en ese punto o al lado
-function maximoGranizoCerca(gGranizo, gDbz, lat, lon, radioKm) {
-  const p = aPixel(lat, lon);
-  const r = Math.ceil(radioKm) + 1;
-  let max = 0;
-  for (let y = Math.max(0, Math.floor(p.y - r)); y <= Math.min(ALTO - 1, Math.ceil(p.y + r)); y++) {
-    for (let x = Math.max(0, Math.floor(p.x - r)); x <= Math.min(ANCHO - 1, Math.ceil(p.x + r)); x++) {
-      const v = gGranizo[y * ANCHO + x];
-      if (v <= max || kmEntre(lat, lon, LAT_FILA[y], LON_COL[x]) > radioKm) continue;
-      let fuerte = false;
-      for (let dy = -1; dy <= 1 && !fuerte; dy++) {
-        for (let dx = -1; dx <= 1; dx++) {
-          const xx = x + dx, yy = y + dy;
-          if (xx >= 0 && yy >= 0 && xx < ANCHO && yy < ALTO && gDbz[yy * ANCHO + xx] >= 40) { fuerte = true; break; }
-        }
-      }
-      if (fuerte) max = v;
-    }
-  }
-  return max;
-}
-
 async function cargarTecho() {
   try {
     const img = new Image();
     await new Promise((ok, mal) => { img.onload = ok; img.onerror = () => mal(new Error("no cargó")); img.src = "ruido.png"; });
-    ctx2d.clearRect(0, 0, ANCHO, ALTO);
-    ctx2d.drawImage(img, 0, 0, ANCHO, ALTO);
-    const d = ctx2d.getImageData(0, 0, ANCHO, ALTO).data;
+    const d = leerPixeles(img).data;
     const t = new Uint8Array(ANCHO * ALTO);
     for (let i = 0, p = 0; i < t.length; i++, p += 4) t[i] = d[p];
     techo = t;
-  } catch (e) {
-    techo = null;
-  }
+  } catch (e) { techo = null; }
 }
 
-// ---------- Alarma ----------
-const ORDEN ={ gris: 0, verde: 1, amarillo: 2, naranja: 3, rojo: 4 };
-
+// =================== Alarma ===================
+const ORDEN = { gris: 0, verde: 1, amarillo: 2, naranja: 3, rojo: 4 };
 function mostrarEstado(nivel, titulo, lineas) {
-  $("estado").dataset.nivel = nivel;
-  $("estadoTitulo").textContent = titulo;
-  const cont = $("estadoDetalle");
-  cont.textContent = "";
-  for (const l of lineas) {
-    const div = document.createElement("div");
-    div.textContent = l;
-    cont.appendChild(div);
+  for (const id of ["estado", "estadoAlarma"]) {
+    const el = $(id);
+    el.dataset.nivel = nivel;
+    el.querySelector(".estadoTitulo").textContent = titulo;
+    const cont = el.querySelector(".estadoDetalle");
+    cont.textContent = "";
+    for (const l of lineas) { const div = document.createElement("div"); div.textContent = l; cont.appendChild(div); }
   }
 }
-
 function rayoMasCercano(lat, lon, ventanaMs) {
   const ahora = Date.now();
   let mejor = null;
@@ -363,64 +593,42 @@ function rayoMasCercano(lat, lon, ventanaMs) {
   }
   return mejor;
 }
-
 async function evaluarAlarma() {
   try {
-    if (!usarProxy) {
-      mostrarEstado("gris", "Alarma no disponible", ["Falta conectar el intermediario de Cloudflare, por eso no hay rayos ni alarma. El radar funciona igual."]);
-      return;
-    }
-    if (!dentroDelRadar(pos.lat, pos.lon)) {
-      mostrarEstado("gris", "Fuera del área del radar", ["Tu ubicación está fuera de la zona que cubre el radar de Mendoza, así que la alarma no aplica."]);
-      return;
-    }
-    if (!mzaFrames.length) {
-      mostrarEstado("gris", "Sin datos del radar", ["El radar de Mendoza no tiene imágenes recientes. La alarma no puede revisar tu zona."]);
-      return;
-    }
+    if (!usarProxy) { mostrarEstado("gris", "Alarma no disponible", ["No me pude conectar con tu intermediario de Cloudflare, por eso no hay rayos ni alarma. El radar funciona igual."]); return; }
+    if (!dentroDelRadar(pos.lat, pos.lon)) { mostrarEstado("gris", "Fuera del área del radar", ["Tu ubicación está fuera de la zona que cubre el radar de Mendoza, así que la alarma no aplica."]); return; }
+    if (!mzaFrames.length) { mostrarEstado("gris", "Sin datos del radar", ["El radar de Mendoza no tiene imágenes recientes. La alarma no puede revisar tu zona."]); return; }
     const t0 = mzaFrames[mzaFrames.length - 1];
     const a0 = analizar(mzaUrl(t0, "dbz"), "dbz");
     if (!a0) return;
     const { lat, lon } = pos;
-
-    // Imagen de hace unos 10 minutos para ver si la tormenta se acerca
     let tPrev = null;
-    for (const t of mzaFrames) if (t0 - t >= 6 * 60000 && t0 - t <= 14 * 60000) { if (tPrev === null || Math.abs(t0 - t - 600000) < Math.abs(t0 - tPrev - 600000)) tPrev = t; }
+    for (const t of mzaFrames) if (t0 - t >= 6 * 60000 && t0 - t <= 14 * 60000 && (tPrev === null || Math.abs(t0 - t - 600000) < Math.abs(t0 - tPrev - 600000))) tPrev = t;
     const aPrev = tPrev !== null ? analizar(mzaUrl(tPrev, "dbz"), "dbz") : null;
-
     const encima = maximoCerca(a0.grilla, lat, lon, 3);
-    const nucleo = masCercano(a0.nucleos, lat, lon);
-    const lluvia = masCercano(a0.lluvias, lat, lon);
+    const nucleo = masCercano(a0.nucleos, lat, lon), lluvia = masCercano(a0.lluvias, lat, lon);
     let tendencia = null;
     if (aPrev && isFinite(nucleo.km)) {
       const dPrev = masCercano(aPrev.nucleos, lat, lon).km;
-      if (isFinite(dPrev)) {
-        const v = (dPrev - nucleo.km) / ((t0 - tPrev) / 3600000); // km/h (positivo = se acerca)
-        tendencia = { v, eta: v >= 5 && nucleo.km > 3 ? nucleo.km / v * 60 : null };
-      }
+      if (isFinite(dPrev)) { const v = (dPrev - nucleo.km) / ((t0 - tPrev) / 3600000); tendencia = { v, eta: v >= 5 && nucleo.km > 3 ? nucleo.km / v * 60 : null }; }
     }
     let granizo = 0;
     const urlG = mzaUrl(t0, "granizo");
-    if (await precargar(urlG, 10000)) {
-      const g = analizar(urlG, "granizo");
-      if (g) granizo = maximoGranizoCerca(g.grilla, a0.grilla, lat, lon, 15);
-    }
+    if (await precargar(urlG, 10000)) { const g = analizar(urlG, "granizo"); if (g) granizo = maximoCerca(g.grilla, lat, lon, 15); }
     const rayo = rayoMasCercano(lat, lon, 10 * 60000);
 
-    // Nivel
     let nivel = "verde", titulo = "Sin tormentas cerca";
-    const se = tendencia && tendencia.eta !== null && tendencia.eta <= 30 && nucleo.km <= 40;
+    const llega = tendencia && tendencia.eta !== null && tendencia.eta <= 30 && nucleo.km <= 40;
     if (encima >= 40) { nivel = "rojo"; titulo = "Tormenta fuerte encima tuyo"; }
     else if (rayo && rayo.km <= 8) { nivel = "rojo"; titulo = `Rayos a ${km(rayo.km)} km`; }
     else if (granizo >= 70 && nucleo.km <= 5) { nivel = "rojo"; titulo = "Posible granizo encima tuyo"; }
     else if (nucleo.km <= 15) { nivel = "naranja"; titulo = `Tormenta cerca: a ${km(nucleo.km)} km`; }
-    else if (se) { nivel = "naranja"; titulo = `Tormenta acercándose: llegaría en ~${Math.round(tendencia.eta)} min`; }
+    else if (llega) { nivel = "naranja"; titulo = `Tormenta acercándose: llegaría en ~${Math.round(tendencia.eta)} min`; }
     else if (rayo && rayo.km <= 20) { nivel = "naranja"; titulo = `Rayos cerca: a ${km(rayo.km)} km`; }
     else if (encima >= LLUVIA_DBZ) { nivel = "naranja"; titulo = "Está lloviendo en tu zona"; }
     else if (granizo >= 50) { nivel = "naranja"; titulo = "Posible granizo cerca"; }
     else if (nucleo.km <= 40 || lluvia.km <= 15 || (rayo && rayo.km <= 40)) { nivel = "amarillo"; titulo = "Tormentas en la zona"; }
 
-    // Detalle
     const lineas = [];
     if (isFinite(nucleo.km)) {
       let l = `Tormenta más cercana: a ${km(nucleo.km)} km (${nucleo.maxDbz} dBZ)`;
@@ -430,9 +638,7 @@ async function evaluarAlarma() {
         else l += ", casi quieta";
       }
       lineas.push(l + ".");
-    } else {
-      lineas.push("No hay núcleos de tormenta en el área del radar.");
-    }
+    } else lineas.push("No hay núcleos de tormenta en el área del radar.");
     if (isFinite(lluvia.km) && lluvia.km < nucleo.km - 2) lineas.push(`Lluvia más cercana: a ${km(lluvia.km)} km.`);
     if (encima >= 5) lineas.push(`En tu ubicación el radar marca ${encima} dBZ.`);
     if (granizo >= 50) lineas.push(`Probabilidad de granizo de ${granizo}% o más a menos de 15 km.`);
@@ -450,93 +656,182 @@ async function evaluarAlarma() {
     mostrarEstado("gris", "La alarma no pudo revisar el radar", [String(e && e.message || e)]);
   }
 }
-
 function pitido() {
   try {
     if (!audioCtx) return;
     const t = audioCtx.currentTime;
     [0, 0.35, 0.7].forEach(off => {
       const o = audioCtx.createOscillator(), g = audioCtx.createGain();
-      o.frequency.value = 880;
-      o.connect(g); g.connect(audioCtx.destination);
-      g.gain.setValueAtTime(0.0001, t + off);
-      g.gain.exponentialRampToValueAtTime(0.5, t + off + 0.02);
-      g.gain.exponentialRampToValueAtTime(0.0001, t + off + 0.28);
+      o.frequency.value = 880; o.connect(g); g.connect(audioCtx.destination);
+      g.gain.setValueAtTime(0.0001, t + off); g.gain.exponentialRampToValueAtTime(0.5, t + off + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + off + 0.28);
       o.start(t + off); o.stop(t + off + 0.3);
     });
   } catch (e) { /* sin sonido */ }
 }
-
 function avisar(titulo, cuerpo) {
   pitido();
   try { if (navigator.vibrate) navigator.vibrate([400, 150, 400, 150, 400]); } catch (e) { /* sin vibración */ }
   try {
-    if (swReg && "Notification" in window && Notification.permission === "granted") {
-      swReg.showNotification("⚠ " + titulo, { body: cuerpo, tag: "mi-clima-alarma", renotify: true, vibrate: [400, 150, 400] });
-    }
+    if (swReg && "Notification" in window && Notification.permission === "granted")
+      swReg.showNotification("⚠ " + titulo, { body: cuerpo, icon: "icono-192.png", tag: "mi-clima-alarma", renotify: true, vibrate: [400, 150, 400] });
   } catch (e) { /* sin notificación */ }
 }
-
+async function registrarSW() {
+  if (swReg || !("serviceWorker" in navigator)) return swReg;
+  try { swReg = await navigator.serviceWorker.register("sw.js"); await navigator.serviceWorker.ready; } catch (e) { swReg = null; }
+  return swReg;
+}
 async function activarAlarma() {
   if (alarmaActiva) {
     alarmaActiva = false;
     if (vigilaUbicacion !== null) { navigator.geolocation.clearWatch(vigilaUbicacion); vigilaUbicacion = null; }
-    $("btnAlarma").textContent = "🔔 Activar alarma";
+    $("btnAlarma").textContent = "🔔 Activar alarma con sonido";
     $("btnAlarma").classList.remove("sec");
     return;
   }
-  try {
-    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
-    await audioCtx.resume();
-  } catch (e) { audioCtx = null; }
-  try {
-    if ("Notification" in window && Notification.permission === "default") await Notification.requestPermission();
-  } catch (e) { /* sin permiso */ }
-  try {
-    if ("serviceWorker" in navigator) swReg = await navigator.serviceWorker.register("sw.js");
-  } catch (e) { swReg = null; }
+  try { audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)(); await audioCtx.resume(); } catch (e) { audioCtx = null; }
+  try { if ("Notification" in window && Notification.permission === "default") await Notification.requestPermission(); } catch (e) { /* sin permiso */ }
+  await registrarSW();
   if (navigator.geolocation) {
     vigilaUbicacion = navigator.geolocation.watchPosition(
-      p => { pos = { lat: p.coords.latitude, lon: p.coords.longitude }; guardarUbicacion(); ponerMarcador(); evaluarAlarma(); },
-      () => { /* si falla, seguimos con la última ubicación */ },
+      p => { pos = { lat: p.coords.latitude, lon: p.coords.longitude }; guardarUbicacion(); ponerMarcador(); evaluarAlarma(); enviarUbicacionAvisos(); },
+      () => { /* seguimos con la última ubicación */ },
       { enableHighAccuracy: true, maximumAge: 30000, timeout: 30000 }
     );
   }
   alarmaActiva = true;
-  nivelAnterior = "verde"; // si ya hay peligro, avisa ahora mismo
+  nivelAnterior = "verde";
   $("btnAlarma").textContent = "🔕 Apagar alarma";
   $("btnAlarma").classList.add("sec");
   pitido();
   evaluarAlarma();
 }
-
 async function pedirPantallaEncendida() {
   try {
-    if ($("chkPantalla").checked && "wakeLock" in navigator && document.visibilityState === "visible") {
-      bloqueoPantalla = await navigator.wakeLock.request("screen");
-    }
-  } catch (e) {
-    $("chkPantalla").checked = false;
-  }
+    if ($("chkPantalla").checked && "wakeLock" in navigator && document.visibilityState === "visible") bloqueoPantalla = await navigator.wakeLock.request("screen");
+  } catch (e) { $("chkPantalla").checked = false; }
 }
 
-// ---------- Rayos ----------
+// =================== Avisos con pantalla apagada (Web Push) ===================
+function b64urlABytes(s) {
+  const b = atob(s.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((s.length + 3) % 4));
+  return Uint8Array.from(b, c => c.charCodeAt(0));
+}
+async function idDe(endpoint) {
+  const h = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(endpoint)));
+  return Array.from(h.slice(0, 16), b => b.toString(16).padStart(2, "0")).join("");
+}
+async function pedirAlIntermediario(ruta, cuerpo) {
+  const r = await fetch(PROXY + ruta, cuerpo ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(cuerpo) } : { cache: "no-store" });
+  const texto = await r.text();
+  if (!r.ok) throw new Error(r.status === 503 ? "falta conectar el almacenamiento KV en Cloudflare (MI_CLIMA)" : texto || "HTTP " + r.status);
+  return texto ? JSON.parse(texto) : {};
+}
+function pushSoportado() { return "serviceWorker" in navigator && "PushManager" in window && "Notification" in window; }
+async function suscripcionActual() {
+  const reg = await registrarSW();
+  return reg ? reg.pushManager.getSubscription() : null;
+}
+async function mostrarInfoAvisos() {
+  const el = $("pushInfo");
+  if (!pushSoportado()) { el.textContent = "Este navegador no permite avisos con la pantalla apagada. Instalá la app desde Chrome."; $("btnPush").disabled = true; return; }
+  if (!usarProxy) { el.textContent = "Sin conexión con tu intermediario de Cloudflare."; return; }
+  try {
+    const sub = await suscripcionActual();
+    if (!sub || !leerLocal("miClimaAvisos")) {
+      $("btnPush").textContent = "📲 Activar avisos con pantalla apagada"; $("btnPush").classList.remove("sec"); $("btnPrueba").disabled = true;
+      el.textContent = "Avisos con pantalla apagada: desactivados.";
+      return;
+    }
+    $("btnPush").textContent = "Desactivar avisos con pantalla apagada"; $("btnPush").classList.add("sec"); $("btnPrueba").disabled = false;
+    const e = await pedirAlIntermediario("/estado?id=" + await idDe(sub.endpoint));
+    let txt = "✅ Avisos activados.";
+    if (e.revisado) {
+      const min = Math.round((Date.now() - e.revisado) / 60000);
+      txt += ` Última revisión automática: hace ${min} min (${e.titulo || "sin datos"}).`;
+      if (min > 15) txt += " ⚠ Hace rato que no revisa: fijate que esté el Cron Trigger en Cloudflare.";
+    } else txt += " Todavía no hubo ninguna revisión automática (se hace cada 5 minutos).";
+    el.textContent = txt;
+  } catch (e) {
+    el.textContent = "No pude consultar los avisos: " + e.message;
+  }
+}
+async function activarAvisos() {
+  const el = $("pushInfo");
+  const btn = $("btnPush");
+  btn.disabled = true;
+  try {
+    if (leerLocal("miClimaAvisos")) {
+      const sub = await suscripcionActual();
+      if (sub) { await pedirAlIntermediario("/desuscribir", { endpoint: sub.endpoint }).catch(() => {}); await sub.unsubscribe(); }
+      guardarLocal("miClimaAvisos", null);
+      el.textContent = "Avisos desactivados.";
+    } else {
+      if (!pushSoportado()) throw new Error("este navegador no permite avisos");
+      if (Notification.permission !== "granted" && await Notification.requestPermission() !== "granted") throw new Error("no diste permiso para las notificaciones");
+      const reg = await registrarSW();
+      if (!reg) throw new Error("no pude registrar el servicio de notificaciones");
+      const { publica } = await pedirAlIntermediario("/vapid");
+      let sub = await reg.pushManager.getSubscription();
+      if (sub) {
+        // Si la suscripción es de una clave anterior, se rehace
+        const actual = sub.options && sub.options.applicationServerKey ? new Uint8Array(sub.options.applicationServerKey) : null;
+        const nueva = b64urlABytes(publica);
+        if (!actual || actual.length !== nueva.length || actual.some((v, i) => v !== nueva[i])) { await sub.unsubscribe(); sub = null; }
+      }
+      if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64urlABytes(publica) });
+      await pedirAlIntermediario("/suscribir", { endpoint: sub.endpoint, lat: pos.lat, lon: pos.lon });
+      ultimaUbicacionEnviada = { ...pos, t: Date.now() };
+      guardarLocal("miClimaAvisos", { desde: Date.now() });
+    }
+  } catch (e) {
+    el.textContent = "No pude cambiar los avisos: " + e.message;
+    btn.disabled = false;
+    return;
+  }
+  btn.disabled = false;
+  mostrarInfoAvisos();
+}
+async function avisoDePrueba() {
+  $("btnPrueba").disabled = true;
+  try {
+    const sub = await suscripcionActual();
+    if (!sub) throw new Error("los avisos no están activados");
+    const r = await pedirAlIntermediario("/probar", { endpoint: sub.endpoint });
+    $("pushInfo").textContent = r.ok ? "Listo: en unos segundos te tiene que llegar la notificación de prueba. Probá también con la pantalla apagada." : `El servicio de avisos respondió ${r.estado}.`;
+  } catch (e) {
+    $("pushInfo").textContent = "No pude mandar la prueba: " + e.message;
+  }
+  $("btnPrueba").disabled = false;
+}
+// Mantiene actualizada tu ubicación en el intermediario (como mucho cada 5 min, o si te moviste más de 2 km)
+async function enviarUbicacionAvisos() {
+  if (!usarProxy || !leerLocal("miClimaAvisos")) return;
+  const u = ultimaUbicacionEnviada;
+  if (u && Date.now() - u.t < 5 * 60000 && kmEntre(u.lat, u.lon, pos.lat, pos.lon) < 2) return;
+  try {
+    const sub = await suscripcionActual();
+    if (!sub) return;
+    ultimaUbicacionEnviada = { ...pos, t: Date.now() };
+    await pedirAlIntermediario("/ubicacion", { endpoint: sub.endpoint, lat: pos.lat, lon: pos.lon });
+  } catch (e) { /* se reintenta la próxima vez */ }
+}
+
+// =================== Rayos ===================
 function horaUtcAMs(hhmmss, ahora) {
   const m = /^(\d{2}):(\d{2}):(\d{2})$/.exec(hhmmss || "");
   if (!m) return null;
   const d = new Date(ahora);
   let t = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), +m[1], +m[2], +m[3]);
-  if (t > ahora + 5 * 60000) t -= 86400000; // rayo de antes de la medianoche UTC
+  if (t > ahora + 5 * 60000) t -= 86400000;
   return t;
 }
-
 async function actualizarRayos() {
   if (!usarProxy || document.visibilityState !== "visible") return;
   try {
     const r = await fetch(PROXY + "/rayos", { cache: "no-store" });
     if (!r.ok) throw new Error("HTTP " + r.status);
-    const d = await r.json();
-    const ahora = Date.now();
+    const d = await r.json(), ahora = Date.now();
     for (const x of d.rayos || []) {
       const clave = `${x.id}-${x.hora}`;
       if (rayos.has(clave)) continue;
@@ -545,130 +840,104 @@ async function actualizarRayos() {
       rayos.set(clave, { lat: x.lat, lon: x.lon, t, marcador: null });
     }
     rayosOk = true;
-  } catch (e) {
-    rayosOk = false;
-  }
+  } catch (e) { rayosOk = false; }
   dibujarRayos();
   evaluarAlarma();
 }
-
 function dibujarRayos() {
   const ahora = Date.now();
   let n = 0;
   for (const [clave, r] of rayos) {
     const edad = ahora - r.t;
-    if (edad > RAYOS_VIDA_MS) {
-      if (r.marcador) capaRayos.removeLayer(r.marcador);
-      rayos.delete(clave);
-      continue;
-    }
+    if (edad > RAYOS_VIDA_MS) { if (r.marcador) capaRayos.removeLayer(r.marcador); rayos.delete(clave); continue; }
     n++;
     const reciente = edad < 5 * 60000;
     const estilo = { radius: reciente ? 6 : 4, color: "#1d2630", weight: 1, fillColor: reciente ? "#ffeb3b" : "#ff9800", fillOpacity: reciente ? 1 : 0.6 };
-    if (!r.marcador) {
-      r.marcador = L.circleMarker([r.lat, r.lon], estilo).bindPopup(`⚡ Rayo a las ${horaLocal(r.t)}`);
-      capaRayos.addLayer(r.marcador);
-    } else {
-      r.marcador.setStyle(estilo);
-      r.marcador.setRadius(estilo.radius);
-    }
+    if (!r.marcador) { r.marcador = L.circleMarker([r.lat, r.lon], estilo).bindPopup(`⚡ Rayo a las ${horaLocal(r.t)}`); capaRayos.addLayer(r.marcador); }
+    else { r.marcador.setStyle(estilo); r.marcador.setRadius(estilo.radius); }
   }
-  if (!usarProxy) $("rayosInfo").textContent = "Rayos no disponibles: falta el intermediario.";
+  if (!usarProxy) $("rayosInfo").textContent = "Rayos no disponibles: sin conexión con el intermediario.";
   else if (rayosOk === false) $("rayosInfo").textContent = "No pude actualizar los rayos. Reintento en 30 segundos.";
   else $("rayosInfo").textContent = `⚡ ${n} rayo${n === 1 ? "" : "s"} en los últimos 15 min (amarillo: últimos 5 min).`;
 }
 
-// ---------- Radar de Mendoza ----------
+// =================== Radar de Mendoza ===================
 async function actualizarMendoza() {
-  const ultimoPar = Math.floor(Date.now() / PASO_MS) * PASO_MS;
-  const desde = ultimoPar - (CUADROS - 1) * PASO_MS;
-  const tengo = new Set(mzaFrames);
-  const candidatos = [];
-  for (let t = desde; t <= ultimoPar; t += PASO_MS) {
-    if (!tengo.has(t)) candidatos.push(t);
-  }
-  const encontrados = await Promise.all(
-    candidatos.map(t => precargar(mzaUrl(t, "dbz")).then(ok => (ok ? t : null)))
-  );
-  mzaFrames = [...mzaFrames, ...encontrados.filter(t => t !== null)]
-    .filter(t => t >= desde)
-    .sort((a, b) => a - b);
-
+  const ultimoPar = Math.floor(Date.now() / PASO_MS) * PASO_MS, desde = ultimoPar - (CUADROS - 1) * PASO_MS;
+  const tengo = new Set(mzaFrames), candidatos = [];
+  for (let t = desde; t <= ultimoPar; t += PASO_MS) if (!tengo.has(t)) candidatos.push(t);
+  const encontrados = await Promise.all(candidatos.map(t => precargar(mzaUrl(t, "dbz")).then(ok => (ok ? t : null))));
+  mzaFrames = [...mzaFrames, ...encontrados.filter(t => t !== null)].filter(t => t >= desde).sort((a, b) => a - b);
   if (hailOn) await precargarGranizo();
-
   const validas = new Set();
   mzaFrames.forEach(t => { validas.add(mzaUrl(t, "dbz")); validas.add(mzaUrl(t, "granizo")); });
   Object.keys(precargas).forEach(u => { if (!validas.has(u)) delete precargas[u]; });
-  for (const u of analisis.keys()) if (!validas.has(u)) analisis.delete(u);
+  for (const [u, a] of analisis) if (!validas.has(u)) { a.limpia && a.limpia.then(x => x && URL.revokeObjectURL(x)); analisis.delete(u); }
+  if (usarProxy && limpio) prepararLimpias();
 }
+function precargarGranizo() { return Promise.all(mzaFrames.map(t => precargar(mzaUrl(t, "granizo"), 10000))); }
 
-function precargarGranizo() {
-  return Promise.all(mzaFrames.map(t => precargar(mzaUrl(t, "granizo"), 10000)));
-}
-
-function opcionesOverlay(opacidad, z) {
-  return { opacity: opacidad, interactive: false, zIndex: z, crossOrigin: usarProxy ? "anonymous" : false };
-}
-
-function mostrarMza(i) {
-  const t = mzaFrames[i];
-  const url = mzaUrl(t, "dbz");
-  if (!mzaOverlay) {
-    mzaOverlay = L.imageOverlay(url, MZA_BOUNDS, opcionesOverlay(OPACIDAD_MZA, 400)).addTo(map);
-  } else {
-    mzaOverlay.setUrl(url);
-    mzaOverlay.setOpacity(OPACIDAD_MZA);
-  }
-  const urlGranizo = mzaUrl(t, "granizo");
-  if (hailOn && precargas[urlGranizo]) {
-    if (!hailOverlay) {
-      hailOverlay = L.imageOverlay(urlGranizo, MZA_BOUNDS, opcionesOverlay(0.9, 450)).addTo(map);
-    } else {
-      hailOverlay.setUrl(urlGranizo);
+// Arma de a poco las imágenes limpias de todas las imágenes (la más nueva primero)
+let preparando = false;
+async function prepararLimpias() {
+  if (preparando) return;
+  preparando = true;
+  try {
+    for (const t of [...mzaFrames].reverse()) {
+      const u = mzaUrl(t, "dbz");
+      if (!analisis.has(u)) { analizar(u, "dbz"); await new Promise(r => setTimeout(r, 0)); }
+      if (hailOn) { const ug = mzaUrl(t, "granizo"); if (precargas[ug] && !analisis.has(ug)) { analizar(ug, "granizo"); await new Promise(r => setTimeout(r, 0)); } }
     }
+  } catch (e) { /* si no se puede limpiar, se muestra la imagen oficial */ }
+  preparando = false;
+}
+// Qué imagen poner en el mapa para un momento dado
+async function imagenParaMostrar(t, tipo) {
+  const u = mzaUrl(t, tipo);
+  if (!usarProxy || !limpio) return u;
+  try {
+    const a = analizar(u, tipo);
+    const limpia = a && await a.limpia;
+    return limpia || u;
+  } catch (e) { return u; }
+}
+function opcionesOverlay(opacidad, z) { return { opacity: opacidad, interactive: false, zIndex: z, crossOrigin: usarProxy ? "anonymous" : false }; }
+let pedidoMostrar = 0;
+async function mostrarMza(i) {
+  const t = mzaFrames[i], yo = ++pedidoMostrar;
+  const url = await imagenParaMostrar(t, "dbz");
+  if (yo !== pedidoMostrar || fuente !== "mza") return; // ya se pidió otra imagen
+  if (!mzaOverlay) mzaOverlay = L.imageOverlay(url, MZA_BOUNDS, opcionesOverlay(OPACIDAD_MZA, 400)).addTo(map);
+  else { mzaOverlay.setUrl(url); mzaOverlay.setOpacity(OPACIDAD_MZA); }
+  const urlG = mzaUrl(t, "granizo");
+  if (hailOn && precargas[urlG]) {
+    const ug = await imagenParaMostrar(t, "granizo");
+    if (yo !== pedidoMostrar) return;
+    if (!hailOverlay) hailOverlay = L.imageOverlay(ug, MZA_BOUNDS, opcionesOverlay(0.9, 450)).addTo(map);
+    else hailOverlay.setUrl(ug);
     hailOverlay.setOpacity(0.9);
-  } else if (hailOverlay) {
-    hailOverlay.setOpacity(0);
-  }
+  } else if (hailOverlay) hailOverlay.setOpacity(0);
 }
+function ocultarMendoza() { if (mzaOverlay) mzaOverlay.setOpacity(0); if (hailOverlay) hailOverlay.setOpacity(0); }
 
-function ocultarMendoza() {
-  if (mzaOverlay) mzaOverlay.setOpacity(0);
-  if (hailOverlay) hailOverlay.setOpacity(0);
-}
-
-// ---------- RainViewer ----------
+// =================== RainViewer ===================
 async function cargarRainViewer() {
   const r = await fetch("https://api.rainviewer.com/public/weather-maps.json", { cache: "no-store" });
   if (!r.ok) throw new Error("HTTP " + r.status);
   const d = await r.json();
-  const pasados = (d.radar && d.radar.past) || [];
-  const futuros = (d.radar && d.radar.nowcast) || [];
+  const pasados = (d.radar && d.radar.past) || [], futuros = (d.radar && d.radar.nowcast) || [];
   if (!pasados.length && !futuros.length) throw new Error("no llegaron imágenes");
   quitarRainViewer();
-  const crear = (f, futuro) => {
-    const layer = L.tileLayer(`${d.host}${f.path}/256/{z}/{x}/{y}/2/1_1.png`, {
-      opacity: 0, maxNativeZoom: 7, maxZoom: 18, zIndex: 400, attribution: "Radar regional © RainViewer"
-    }).addTo(map);
-    return { t: f.time * 1000, layer, futuro };
-  };
+  const crear = (f, futuro) => ({ t: f.time * 1000, futuro, layer: L.tileLayer(`${d.host}${f.path}/256/{z}/{x}/{y}/2/1_1.png`, { opacity: 0, maxNativeZoom: 7, maxZoom: 18, zIndex: 400, attribution: "Radar regional © RainViewer" }).addTo(map) });
   rvFrames = [...pasados.map(f => crear(f, false)), ...futuros.map(f => crear(f, true))];
   rvCargadoEn = Date.now();
 }
+function quitarRainViewer() { rvFrames.forEach(f => map.removeLayer(f.layer)); rvFrames = []; }
+function mostrarRv(i) { rvFrames.forEach((f, k) => f.layer.setOpacity(k === i ? 0.7 : 0)); }
 
-function quitarRainViewer() {
-  rvFrames.forEach(f => map.removeLayer(f.layer));
-  rvFrames = [];
-}
-
-function mostrarRv(i) {
-  rvFrames.forEach((f, k) => f.layer.setOpacity(k === i ? 0.7 : 0));
-}
-
-// ---------- Animación e información ----------
+// =================== Animación ===================
 function cuadrosActuales() { return fuente === "mza" ? mzaFrames : rvFrames; }
 function tiempoDe(k) { return fuente === "mza" ? mzaFrames[k] : rvFrames[k].t; }
-
 function mostrar(i) {
   const lista = cuadrosActuales();
   if (!lista.length) return;
@@ -678,251 +947,129 @@ function mostrar(i) {
   $("slider").value = idx;
   actualizarInfo();
 }
-
 function actualizarInfo() {
   const lista = cuadrosActuales();
   if (!lista.length) return;
-  const nombre = fuente === "mza" ? "Radar Mendoza" : "RainViewer";
-  const t = tiempoDe(idx);
-  const ultimo = tiempoDe(lista.length - 1);
-  const edadMin = Math.max(0, Math.round((Date.now() - ultimo) / 60000));
+  const nombre = fuente === "mza" ? (usarProxy && limpio ? "Radar Mendoza (limpio)" : "Radar Mendoza") : "RainViewer";
+  const edadMin = Math.max(0, Math.round((Date.now() - tiempoDe(lista.length - 1)) / 60000));
   const futuro = fuente === "rv" && rvFrames[idx].futuro ? " (pronóstico de radar)" : "";
-  info.textContent = `${nombre} ${horaLocal(t)}${futuro} · imagen ${idx + 1} de ${lista.length} · la última es de hace ${edadMin} min`;
-  if (edadMin > ATRASADO_MIN) {
-    const w = document.createElement("div");
-    w.className = "warn";
-    w.textContent = `⚠ El radar está atrasado: no hay imágenes nuevas hace ${edadMin} minutos.`;
-    info.appendChild(w);
-  }
+  info.textContent = `${nombre} ${horaLocal(tiempoDe(idx))}${futuro} · imagen ${idx + 1} de ${lista.length} · la última es de hace ${edadMin} min`;
+  if (edadMin > ATRASADO_MIN) avisoRadar(`⚠ El radar está atrasado: no hay imágenes nuevas hace ${edadMin} minutos.`);
 }
-
-function avisoRadar(mensaje) {
-  const w = document.createElement("div");
-  w.className = "warn";
-  w.textContent = mensaje;
-  info.appendChild(w);
-}
-
+function avisoRadar(m) { const w = document.createElement("div"); w.className = "warn"; w.textContent = m; info.appendChild(w); }
 async function verMendoza(permitirCambio) {
-  fuente = "mza";
-  marcarBotones();
-  quitarRainViewer();
+  fuente = "mza"; marcarBotones(); quitarRainViewer();
   info.textContent = "Buscando imágenes del radar de Mendoza…";
-  try {
-    await actualizarMendoza();
-  } catch (e) {
-    info.textContent = "Error al buscar el radar de Mendoza: " + e.message;
-    return;
-  }
+  try { await actualizarMendoza(); } catch (e) { info.textContent = "Error al buscar el radar de Mendoza: " + e.message; return; }
   if (fuente !== "mza") return;
   if (!mzaFrames.length) {
-    if (permitirCambio) {
-      await verRainViewer();
-      avisoRadar("El radar de Mendoza no tiene imágenes de los últimos 40 minutos, por eso muestro RainViewer.");
-    } else {
-      info.textContent = "";
-      avisoRadar("El radar de Mendoza no tiene imágenes de los últimos 40 minutos. Probá más tarde o usá RainViewer.");
-    }
+    if (permitirCambio) { await verRainViewer(); avisoRadar("El radar de Mendoza no tiene imágenes de los últimos 40 minutos, por eso muestro RainViewer."); }
+    else { info.textContent = ""; avisoRadar("El radar de Mendoza no tiene imágenes de los últimos 40 minutos. Probá más tarde o usá RainViewer."); }
     evaluarAlarma();
     return;
   }
   mostrar(mzaFrames.length - 1);
   evaluarAlarma();
 }
-
 async function verRainViewer() {
-  fuente = "rv";
-  marcarBotones();
-  ocultarMendoza();
+  fuente = "rv"; marcarBotones(); ocultarMendoza();
   info.textContent = "Cargando RainViewer…";
-  try {
-    await cargarRainViewer();
-  } catch (e) {
-    info.textContent = "No pude cargar RainViewer: " + e.message;
-    return;
-  }
+  try { await cargarRainViewer(); } catch (e) { info.textContent = "No pude cargar RainViewer: " + e.message; return; }
   if (fuente !== "rv") { quitarRainViewer(); return; }
-  const ultimoPasado = rvFrames.filter(f => !f.futuro).length - 1;
-  mostrar(Math.max(0, ultimoPasado));
+  mostrar(Math.max(0, rvFrames.filter(f => !f.futuro).length - 1));
 }
-
 function marcarBotones() {
   $("srcMza").classList.toggle("on", fuente === "mza");
   $("srcRv").classList.toggle("on", fuente === "rv");
   $("hailWrap").style.display = fuente === "mza" ? "" : "none";
+  $("limpioWrap").style.display = fuente === "mza" && usarProxy ? "" : "none";
 }
-
 async function refrescar() {
   if (actualizando) return;
   actualizando = true;
   try {
-    if (fuente === "mza") {
-      const tActual = mzaFrames[idx];
-      const estabaEnUltimo = idx >= mzaFrames.length - 1;
-      await actualizarMendoza();
-      if (fuente === "mza" && mzaFrames.length) {
-        const nuevoIdx = mzaFrames.indexOf(tActual);
-        mostrar(estabaEnUltimo || nuevoIdx < 0 ? mzaFrames.length - 1 : nuevoIdx);
-      }
-    } else {
-      // la alarma siempre usa el radar de Mendoza, aunque estés mirando RainViewer
-      await actualizarMendoza();
+    const tActual = mzaFrames[idx], estabaEnUltimo = idx >= mzaFrames.length - 1;
+    await actualizarMendoza(); // la alarma siempre usa el radar de Mendoza
+    if (fuente === "mza" && mzaFrames.length) {
+      const nuevoIdx = mzaFrames.indexOf(tActual);
+      mostrar(estabaEnUltimo || nuevoIdx < 0 ? mzaFrames.length - 1 : nuevoIdx);
+    } else if (fuente === "rv") {
       if (Date.now() - rvCargadoEn > 9 * 60 * 1000) await verRainViewer(); else actualizarInfo();
     }
-  } catch (e) {
-    info.textContent = "Error al actualizar el radar: " + e.message;
-  } finally {
-    actualizando = false;
-  }
+  } catch (e) { info.textContent = "Error al actualizar el radar: " + e.message; }
+  finally { actualizando = false; }
   evaluarAlarma();
 }
 
-// ---------- Pronóstico (Open-Meteo) ----------
-async function cargarPronostico() {
-  const el = $("forecast");
-  try {
-    const url = "https://api.open-meteo.com/v1/forecast" +
-      `?latitude=${pos.lat.toFixed(4)}&longitude=${pos.lon.toFixed(4)}` +
-      "&hourly=precipitation&models=gfs_seamless,ecmwf_ifs025,icon_seamless" +
-      "&timezone=auto&forecast_days=2";
-    const r = await fetch(url);
-    if (r.status === 429) throw new Error("Open-Meteo está limitando las consultas, probá más tarde");
-    if (!r.ok) throw new Error("HTTP " + r.status);
-    const d = await r.json();
-    const hourly = d.hourly || {};
-    const horas = hourly.time || [];
-
-    let modelos = [["GFS", "precipitation_gfs_seamless"], ["ECMWF", "precipitation_ecmwf_ifs025"], ["ICON", "precipitation_icon_seamless"]]
-      .filter(([, k]) => Array.isArray(hourly[k]));
-    if (!modelos.length && Array.isArray(hourly.precipitation)) modelos = [["Modelo", "precipitation"]];
-    if (!modelos.length || !horas.length) throw new Error("datos incompletos");
-
-    const desde = Date.now() - 3600 * 1000;
-    let inicio = horas.findIndex(h => new Date(h).getTime() >= desde);
-    if (inicio < 0) inicio = 0;
-
-    let filas = "", maximo = 0;
-    for (let i = inicio; i < inicio + 24 && i < horas.length; i++) {
-      const celdas = modelos.map(([, k]) => {
-        const v = hourly[k][i];
-        if (typeof v === "number" && v > maximo) maximo = v;
-        return typeof v === "number" ? v.toFixed(1) : "-";
-      });
-      filas += `<tr><td>${String(horas[i]).slice(11, 16)}</td>${celdas.map(c => `<td>${c}</td>`).join("")}</tr>`;
-    }
-    const cabecera = `<tr><th>Hora</th>${modelos.map(([n]) => `<th>${n}</th>`).join("")}</tr>`;
-    el.innerHTML = `<p>Máximo esperado en 24 h: <b>${maximo.toFixed(1)} mm/h</b> (el modelo más lluvioso)</p><table>${cabecera}${filas}</table>`;
-  } catch (e) {
-    el.textContent = "No pude cargar el pronóstico: " + e.message;
-  }
-}
-
-// ---------- Ubicación ----------
+// =================== Ubicación ===================
 function ponerMarcador() {
-  if (!posMarker) {
-    posMarker = L.circleMarker([pos.lat, pos.lon], { radius: 7, color: "#fff", weight: 2, fillColor: "#1565c0", fillOpacity: 1 }).addTo(map);
-  } else {
-    posMarker.setLatLng([pos.lat, pos.lon]);
-  }
+  if (!map) return;
+  if (!posMarker) posMarker = L.circleMarker([pos.lat, pos.lon], { radius: 7, color: "#fff", weight: 2, fillColor: "#1565c0", fillOpacity: 1 }).addTo(map);
+  else posMarker.setLatLng([pos.lat, pos.lon]);
 }
-
-function leerUbicacionGuardada() {
-  try {
-    const g = JSON.parse(localStorage.getItem("miClimaPos") || "null");
-    if (g && typeof g.lat === "number" && typeof g.lon === "number") return g;
-  } catch (e) { /* sin almacenamiento */ }
-  return null;
-}
-
-function guardarUbicacion() {
-  try { localStorage.setItem("miClimaPos", JSON.stringify(pos)); } catch (e) { /* no pasa nada */ }
-}
-
+function guardarUbicacion() { guardarLocal("miClimaPos", pos); }
 $("btnLoc").addEventListener("click", () => {
-  if (!navigator.geolocation) {
-    $("forecast").textContent = "Este navegador no permite leer la ubicación.";
-    return;
-  }
+  if (!navigator.geolocation) { $("actualizado").textContent = "Este navegador no permite leer la ubicación."; return; }
+  $("lugar").textContent = "Buscando tu ubicación…";
   navigator.geolocation.getCurrentPosition(
     p => {
       pos = { lat: p.coords.latitude, lon: p.coords.longitude };
-      guardarUbicacion();
-      map.setView([pos.lat, pos.lon], 10);
-      ponerMarcador();
-      cargarPronostico();
-      evaluarAlarma();
+      guardarUbicacion(); map.setView([pos.lat, pos.lon], 10); ponerMarcador();
+      cargarLugar(); cargarClima(); evaluarAlarma(); enviarUbicacionAvisos();
+      if ($("detModelos").open) cargarModelos();
     },
-    e => {
-      $("forecast").textContent = "No pude obtener tu ubicación (" + e.message + "). Revisá el permiso de ubicación del navegador.";
-    },
+    e => { cargarLugar(); $("actualizado").textContent = "No pude obtener tu ubicación (" + e.message + "). Revisá el permiso de ubicación del navegador."; },
     { enableHighAccuracy: true, timeout: 20000 }
   );
 });
 
-// ---------- Controles ----------
-$("btnPlay").addEventListener("click", () => {
-  playing = !playing;
-  $("btnPlay").textContent = playing ? "⏸" : "▶";
-});
-$("slider").addEventListener("input", () => {
-  playing = false;
-  $("btnPlay").textContent = "▶";
-  mostrar(Number($("slider").value));
-});
+// =================== Controles ===================
+$("btnPlay").addEventListener("click", () => { playing = !playing; $("btnPlay").textContent = playing ? "⏸" : "▶"; });
+$("slider").addEventListener("input", () => { playing = false; $("btnPlay").textContent = "▶"; mostrar(Number($("slider").value)); });
 $("srcMza").addEventListener("click", () => { if (fuente !== "mza") verMendoza(false); });
 $("srcRv").addEventListener("click", () => { if (fuente !== "rv") verRainViewer(); });
-$("chkHail").addEventListener("change", async e => {
-  hailOn = e.target.checked;
-  if (hailOn) await precargarGranizo();
-  if (fuente === "mza" && mzaFrames.length) mostrar(idx);
-});
-$("chkRayos").addEventListener("change", e => {
-  if (e.target.checked) capaRayos.addTo(map); else map.removeLayer(capaRayos);
-});
+$("chkLimpio").addEventListener("change", e => { limpio = e.target.checked; guardarLocal("miClimaLimpio", limpio); if (limpio) prepararLimpias(); if (fuente === "mza" && mzaFrames.length) mostrar(idx); });
+$("chkHail").addEventListener("change", async e => { hailOn = e.target.checked; if (hailOn) { await precargarGranizo(); if (limpio) prepararLimpias(); } if (fuente === "mza" && mzaFrames.length) mostrar(idx); });
+$("chkRayos").addEventListener("change", e => { if (e.target.checked) capaRayos.addTo(map); else map.removeLayer(capaRayos); });
 $("btnAlarma").addEventListener("click", activarAlarma);
-$("chkPantalla").addEventListener("change", e => {
-  if (e.target.checked) pedirPantallaEncendida();
-  else if (bloqueoPantalla) { bloqueoPantalla.release().catch(() => {}); bloqueoPantalla = null; }
-});
+$("btnPush").addEventListener("click", activarAvisos);
+$("btnPrueba").addEventListener("click", avisoDePrueba);
+$("chkPantalla").addEventListener("change", e => { if (e.target.checked) pedirPantallaEncendida(); else if (bloqueoPantalla) { bloqueoPantalla.release().catch(() => {}); bloqueoPantalla = null; } });
 document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState === "visible") {
-    refrescar();
-    actualizarRayos();
-    pedirPantallaEncendida();
-  }
+  if (document.visibilityState === "visible") { refrescar(); actualizarRayos(); pedirPantallaEncendida(); enviarUbicacionAvisos(); mostrarInfoAvisos(); }
 });
 
-// ---------- Inicio ----------
+// =================== Inicio ===================
 async function probarProxy() {
   if (!PROXY) return false;
   try {
-    const ctrl = new AbortController();
-    const corte = setTimeout(() => ctrl.abort(), 8000);
+    const ctrl = new AbortController(), corte = setTimeout(() => ctrl.abort(), 8000);
     const r = await fetch(PROXY + "/", { cache: "no-store", signal: ctrl.signal });
     clearTimeout(corte);
     return r.ok;
-  } catch (e) {
-    return false;
-  }
+  } catch (e) { return false; }
 }
-
 async function iniciar() {
-  const guardada = leerUbicacionGuardada();
-  if (guardada) pos = guardada;
+  const guardada = leerLocal("miClimaPos");
+  if (guardada && typeof guardada.lat === "number" && typeof guardada.lon === "number") pos = guardada;
+  const preferencia = leerLocal("miClimaLimpio");
+  if (preferencia === false) { limpio = false; $("chkLimpio").checked = false; }
   map = L.map("map").setView([pos.lat, pos.lon], guardada ? 10 : 8);
   L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 18, attribution: "© OpenStreetMap" }).addTo(map);
   capaRayos = L.layerGroup().addTo(map);
   ponerMarcador();
-  cargarPronostico();
-
+  cargarLugar();
+  cargarClima();
   const [proxyOk] = await Promise.all([probarProxy(), cargarTecho()]);
   usarProxy = proxyOk;
+  marcarBotones();
   dibujarRayos();
+  mostrarInfoAvisos();
   await verMendoza(true);
   actualizarRayos();
-
+  enviarUbicacionAvisos();
   setInterval(() => {
-    if (!playing) return;
+    if (!playing || tabActual !== "radar") return;
     const lista = cuadrosActuales();
     if (lista.length < 2) return;
     if (idx === lista.length - 1 && pausaFinal < 4) { pausaFinal++; return; }
@@ -931,8 +1078,8 @@ async function iniciar() {
   }, 500);
   setInterval(refrescar, PASO_MS);
   setInterval(actualizarRayos, RAYOS_CADA_MS);
+  setInterval(() => { if (document.visibilityState === "visible") cargarClima(); }, CLIMA_CADA_MS);
 }
-
 iniciar().catch(e => { info.textContent = "Error al iniciar la app: " + e.message; });
 </script>
 </body>
