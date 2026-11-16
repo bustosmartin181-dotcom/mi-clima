@@ -94,6 +94,32 @@ nav.tabs button.on{color:var(--accent);font-weight:700}
 .aqi{display:flex;align-items:center;gap:10px;margin-top:8px}
 .aqi .valor{font-size:28px;font-weight:700}
 .aqi .cat{font-size:16px;font-weight:600}
+/* Capas del mapa: satélite, nubes y viento */
+.mapaCaja{position:relative;z-index:0}
+.chips{position:absolute;top:10px;right:10px;z-index:1001;display:flex;flex-direction:column;gap:6px;align-items:flex-end}
+.chip{background:rgba(255,255,255,.93);color:#1d2630;border:1px solid rgba(0,0,0,.25);border-radius:18px;padding:7px 11px;font-size:13px;font-weight:600;box-shadow:0 1px 4px rgba(0,0,0,.35)}
+.chip.on{background:#1565c0;color:#fff;border-color:#1565c0}
+.capaTitulo{font-weight:600;margin-bottom:8px}
+#panelViento .seg button,#panelNubes .seg button{padding:8px 4px;font-size:13px}
+#panelViento + #panelNubes{margin-top:16px}
+.escala{height:12px;border-radius:6px;margin-top:4px}
+.escalaNum{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-top:2px}
+.mapaCaja.destello::after{content:"";position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none;z-index:1002;animation:mapaDestello .5s ease-out}
+@keyframes mapaDestello{0%{opacity:.7}100%{opacity:0}}
+/* Rayos animados */
+.rayoIcono{background:transparent;border:0}
+.rayo{position:relative;width:20px;height:20px}
+.rayo svg{display:block;width:20px;height:20px;stroke:#1d2630;stroke-width:1.2;stroke-linejoin:round}
+.rayo.e0 svg{fill:#fff;filter:drop-shadow(0 0 4px #ffee58)}
+.rayo.e1 svg{fill:#ffeb3b}
+.rayo.e2 svg{fill:#ff9800;transform:scale(.85);opacity:.9}
+.rayo.e3 svg{fill:#c62828;transform:scale(.7);opacity:.75}
+.rayo.nuevo svg{animation:rayoDestello 1.2s ease-out}
+.rayo.nuevo::before,.rayo.nuevo::after{content:"";position:absolute;left:0;top:0;width:20px;height:20px;border-radius:50%;border:2px solid #fff59d;box-shadow:0 0 6px #ffeb3b;opacity:0;pointer-events:none;animation:rayoOnda 1.6s ease-out 2}
+.rayo.nuevo::after{animation-delay:.45s}
+@keyframes rayoOnda{0%{transform:scale(.3);opacity:.95}100%{transform:scale(4.5);opacity:0}}
+@keyframes rayoDestello{0%{transform:scale(2.8);filter:brightness(2.5) drop-shadow(0 0 10px #fff)}40%{transform:scale(1.4)}100%{transform:scale(1)}}
+@media (prefers-reduced-motion: reduce){.rayo.nuevo svg,.rayo.nuevo::before,.rayo.nuevo::after,.mapaCaja.destello::after{animation:none}}
 </style>
 </head>
 <body>
@@ -141,7 +167,41 @@ nav.tabs button.on{color:var(--accent);font-weight:700}
 
 <!-- ============ RADAR ============ -->
 <section id="tab-radar" class="tab">
-  <div id="map"></div>
+  <div class="mapaCaja" id="mapaCaja">
+    <div id="map"></div>
+    <div class="chips" role="group" aria-label="Capas del mapa">
+      <button id="chipSat" class="chip" type="button" aria-pressed="false">🛰️ Satélite</button>
+      <button id="chipNubes" class="chip" type="button" aria-pressed="false">☁️ Nubes</button>
+      <button id="chipViento" class="chip" type="button" aria-pressed="false">💨 Viento</button>
+    </div>
+  </div>
+  <div class="panel" id="panelCapas" style="display:none">
+    <div id="panelViento" style="display:none">
+      <div class="capaTitulo">💨 Viento (pronóstico)</div>
+      <div class="seg" id="segVientoHora" role="group" aria-label="Momento del viento">
+        <button type="button" data-h="0" class="on">Ahora</button>
+        <button type="button" data-h="3">+3 h</button>
+        <button type="button" data-h="6">+6 h</button>
+        <button type="button" data-h="12">+12 h</button>
+        <button type="button" data-h="24">+24 h</button>
+      </div>
+      <div class="seg" id="segVientoTipo" role="group" aria-label="Tipo de viento" style="margin-bottom:8px">
+        <button type="button" data-r="0" class="on">Viento medio</button>
+        <button type="button" data-r="1">Ráfagas</button>
+      </div>
+      <div class="escala" id="escalaViento"></div>
+      <div class="escalaNum"><span>0</span><span>20</span><span>40</span><span>60</span><span>80</span><span>100+ km/h</span></div>
+      <div id="vientoInfo" class="small"></div>
+    </div>
+    <div id="panelNubes" style="display:none">
+      <div class="capaTitulo">☁️ Nubes (satélite GOES-East)</div>
+      <div class="seg" id="segNubes" role="group" aria-label="Tipo de imagen de nubes" style="margin-bottom:8px">
+        <button type="button" data-n="color" class="on">Color real</button>
+        <button type="button" data-n="ir">Infrarrojo (tormentas)</button>
+      </div>
+      <div id="nubesInfo" class="small"></div>
+    </div>
+  </div>
   <div class="panel">
     <div class="seg" role="group" aria-label="Fuente del radar">
       <button id="srcMza" type="button" class="on">Radar Mendoza (HD)</button>
@@ -155,7 +215,7 @@ nav.tabs button.on{color:var(--accent);font-weight:700}
     <div id="notaZona" class="small" style="display:none"></div>
     <label class="check" id="limpioWrap"><input type="checkbox" id="chkLimpio" checked> Radar limpio (sin el ruido de cerros y ciudad)</label>
     <label class="check" id="hailWrap"><input type="checkbox" id="chkHail"> Mostrar probabilidad de granizo</label>
-    <label class="check"><input type="checkbox" id="chkRayos" checked> Mostrar rayos (últimos 15 min)</label>
+    <label class="check"><input type="checkbox" id="chkRayos" checked> Mostrar rayos (últimos 15 min, con destello al caer)</label>
     <div id="rayosInfo" class="small"></div>
     <div class="small">Amarillo y rojo: lluvia fuerte o posible granizo. Mirá hacia dónde se mueven las manchas en la animación.</div>
   </div>
@@ -177,7 +237,8 @@ nav.tabs button.on{color:var(--accent);font-weight:700}
   <div class="panel small">
     Pronóstico: Open-Meteo (CC BY 4.0). Radar y rayos: Dirección de Agricultura y Contingencias Climáticas, Gobierno de Mendoza
     (<a href="https://www2.contingencias.mendoza.gov.ar/radar/web/" target="_blank" rel="noopener">radar oficial</a>), rayos del satélite GOES-19 (NOAA).
-    Radar regional: RainViewer (Weather data by RainViewer). Mapa: © OpenStreetMap. Nombre del lugar: OpenStreetMap Nominatim. Calidad del aire: Open-Meteo (CAMS). Búsqueda de ciudades: Open-Meteo (GeoNames). App de uso personal.
+    Radar regional: RainViewer (Weather data by RainViewer). Mapa: © OpenStreetMap. Vista satelital: Esri World Imagery (© Esri, Maxar, Earthstar Geographics).
+    Nubes: satélite GOES-East (NOAA) servido por NASA GIBS. Viento animado: pronóstico de Open-Meteo. Nombre del lugar: OpenStreetMap Nominatim. Calidad del aire: Open-Meteo (CAMS). Búsqueda de ciudades: Open-Meteo (GeoNames). App de uso personal.
   </div>
 </section>
 
@@ -266,7 +327,7 @@ let idx = 0, playing = true, pausaFinal = 0;
 let mzaOverlay = null, hailOverlay = null, hailOn = false, limpio = true;
 let precargas = {}, actualizando = false;
 const analisis = new Map();     // url de la imagen -> análisis (grilla limpia, núcleos, imagen limpia)
-let rayos = new Map(), capaRayos = null, rayosOk = null;
+let rayos = new Map(), capaRayos = null, rayosOk = null, rayosPrimeraCarga = true;
 let alarmaActiva = false, nivelAnterior = "gris", audioCtx = null, swReg = null, vigilaUbicacion = null, bloqueoPantalla = null;
 let ultimaUbicacionEnviada = null;
 let tabActual = "ahora";
@@ -294,7 +355,7 @@ function mostrarTab(nombre) {
   tabActual = nombre;
   document.querySelectorAll(".tab").forEach(s => s.classList.toggle("activa", s.id === "tab-" + nombre));
   document.querySelectorAll("nav.tabs button").forEach(b => b.classList.toggle("on", b.dataset.tab === nombre));
-  if (nombre === "radar" && map) setTimeout(() => map.invalidateSize(), 50);
+  if (nombre === "radar" && map) setTimeout(() => { map.invalidateSize(); if (vientoOn) programarViento(100); }, 50);
   window.scrollTo(0, 0);
 }
 document.querySelectorAll("nav.tabs button").forEach(b => b.addEventListener("click", () => mostrarTab(b.dataset.tab)));
@@ -340,7 +401,7 @@ async function cargarClima() {
     const url = "https://api.open-meteo.com/v1/forecast" +
       `?latitude=${l.lat.toFixed(4)}&longitude=${l.lon.toFixed(4)}` +
       "&current=temperature_2m,relative_humidity_2m,apparent_temperature,is_day,precipitation,weather_code,surface_pressure,wind_speed_10m,wind_direction_10m,wind_gusts_10m" +
-      "&hourly=temperature_2m,precipitation_probability,weather_code,is_day,wind_gusts_10m,precipitation,snowfall" +
+      "&hourly=temperature_2m,precipitation_probability,weather_code,is_day,wind_gusts_10m,precipitation,snowfall,relative_humidity_2m,wind_speed_10m,wind_direction_10m" +
       "&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,sunrise,sunset,uv_index_max,wind_speed_10m_max,wind_gusts_10m_max" +
       "&timezone=auto&forecast_days=7";
     const r = await fetch(url);
@@ -360,9 +421,11 @@ async function cargarClima() {
 function dibujarClima(d, t) {
   const c = d.current, dia = d.daily, h = d.hourly;
   const ahoraTxt = tiempo(c.weather_code, c.is_day);
-  $("iconoActual").textContent = ahoraTxt.icono;
+  const enZonaZonda = zonaZonda(d.latitude, d.longitude);
+  const zondaAhora = enZonaZonda ? nivelZonda(c.wind_direction_10m, c.wind_gusts_10m, c.relative_humidity_2m) : 0;
+  $("iconoActual").textContent = zondaAhora ? "🌬️" : ahoraTxt.icono;
   $("tempActual").textContent = r0(c.temperature_2m) + "°";
-  $("descActual").textContent = ahoraTxt.texto;
+  $("descActual").textContent = zondaAhora === 2 ? "Viento Zonda probable" : zondaAhora === 1 ? "Posible viento Zonda" : ahoraTxt.texto;
   $("sensacion").textContent = `Sensación ${r0(c.apparent_temperature)}° · Máx ${r0(dia.temperature_2m_max[0])}° / Mín ${r0(dia.temperature_2m_min[0])}°`;
 
   // Próximas 24 horas
@@ -377,9 +440,12 @@ function dibujarClima(d, t) {
     div.className = "hora";
     const prob = h.precipitation_probability ? h.precipitation_probability[i] : null;
     div.innerHTML = `<div class="small" style="margin:0">${i === inicio ? "Ahora" : String(h.time[i]).slice(11, 16)}</div><div class="e"></div><div class="t"></div><div class="p"></div>`;
-    div.querySelector(".e").textContent = tt.icono;
+    const zh = enZonaZonda && h.wind_direction_10m && h.relative_humidity_2m ? nivelZonda(h.wind_direction_10m[i], h.wind_gusts_10m[i], h.relative_humidity_2m[i]) : 0;
+    div.querySelector(".e").textContent = zh ? "🌬️" : tt.icono;
     div.querySelector(".t").textContent = r0(h.temperature_2m[i]) + "°";
-    div.querySelector(".p").textContent = typeof prob === "number" && prob >= 10 ? `💧${prob}%` : "";
+    const pie = div.querySelector(".p");
+    if (zh) { pie.textContent = "Zonda"; pie.style.color = "var(--n-naranja)"; pie.style.fontWeight = "700"; }
+    else pie.textContent = typeof prob === "number" && prob >= 10 ? `💧${prob}%` : "";
     cont.appendChild(div);
   }
 
@@ -599,7 +665,27 @@ function dibujarAlertasPron(d) {
   const minDe = arr => { let m = Infinity, t = null; if (arr) for (let i = ini; i < fin; i++) if (typeof arr[i] === "number" && arr[i] < m) { m = arr[i]; t = h.time[i]; } return { m, t }; };
   const suma24 = arr => { let s = 0; if (arr) for (let i = ini; i < Math.min(fin, ini + 24); i++) if (typeof arr[i] === "number") s += arr[i]; return s; };
   const raf = maxDe(h.wind_gusts_10m);
-  if (raf.m >= 90) lista.push(["rojo", `Viento muy fuerte: ráfagas de hasta ${r0(raf.m)} km/h (${cuando(raf.t)}).`]);
+  // Viento Zonda: oeste/noroeste, ráfagas fuertes y aire muy seco a la misma hora
+  let zonda = null;
+  if (zonaZonda(d.latitude, d.longitude) && h.wind_direction_10m && h.relative_humidity_2m && h.wind_gusts_10m) {
+    for (let i = ini; i < fin; i++) {
+      const n = nivelZonda(h.wind_direction_10m[i], h.wind_gusts_10m[i], h.relative_humidity_2m[i]);
+      if (!n) continue;
+      if (!zonda) zonda = { nivel: 0, desde: h.time[i], raf: 0, hum: 100, dir: h.wind_direction_10m[i], lluvia: false, horas: new Set() };
+      zonda.nivel = Math.max(zonda.nivel, n);
+      zonda.horas.add(h.time[i]);
+      if (h.wind_gusts_10m[i] > zonda.raf) { zonda.raf = h.wind_gusts_10m[i]; zonda.dir = h.wind_direction_10m[i]; }
+      zonda.hum = Math.min(zonda.hum, h.relative_humidity_2m[i]);
+      if ((h.precipitation_probability && h.precipitation_probability[i] >= 30) || (h.weather_code && h.weather_code[i] >= 51)) zonda.lluvia = true;
+    }
+  }
+  if (zonda) {
+    const color = zonda.raf >= 90 ? "rojo" : zonda.raf >= 70 || zonda.nivel === 2 ? "naranja" : "amarillo";
+    lista.push([color, (zonda.nivel === 2 ? "Viento Zonda probable" : "Posible viento Zonda") + ` desde ${cuando(zonda.desde)}: ráfagas del ${direccion(zonda.dir)} de hasta ${r0(zonda.raf)} km/h y humedad de apenas ${r0(zonda.hum)}%.` +
+      (zonda.lluvia ? " Aunque el pronóstico marque lluvia a esa hora, con el aire tan seco lo más probable es viento y polvo, no lluvia." : "")]);
+  }
+  if (zonda && zonda.horas.has(raf.t)) { /* las ráfagas más fuertes ya están en el aviso de Zonda */ }
+  else if (raf.m >= 90) lista.push(["rojo", `Viento muy fuerte: ráfagas de hasta ${r0(raf.m)} km/h (${cuando(raf.t)}).`]);
   else if (raf.m >= 70) lista.push(["naranja", `Viento fuerte: ráfagas de hasta ${r0(raf.m)} km/h (${cuando(raf.t)}).`]);
   else if (raf.m >= 55) lista.push(["amarillo", `Ráfagas fuertes de hasta ${r0(raf.m)} km/h (${cuando(raf.t)}).`]);
   const nieve = suma24(h.snowfall);
@@ -630,8 +716,20 @@ function dibujarAlertasPron(d) {
   }
   const nota = document.createElement("div");
   nota.className = "small";
-  nota.textContent = "Calculadas con el pronóstico (Open-Meteo). Para avisos oficiales, consultá el SMN.";
+  nota.textContent = "Calculadas con el pronóstico (Open-Meteo). El aviso de Zonda es una estimación: viento del oeste o noroeste, ráfagas fuertes y aire muy seco. Para avisos oficiales, consultá el SMN.";
   cont.appendChild(nota);
+}
+
+// =================== Viento Zonda (estimación) ===================
+// Solo al este de la cordillera, entre el NOA y el norte de la Patagonia
+function zonaZonda(lat, lon) { return typeof lat === "number" && typeof lon === "number" && lat <= -22 && lat >= -40 && lon <= -64 && lon >= -71.5; }
+// 0 = no, 1 = posible, 2 = probable
+function nivelZonda(dir, raf, hum) {
+  if (typeof dir !== "number" || typeof raf !== "number" || typeof hum !== "number") return 0;
+  if (dir < 235 || dir > 350) return 0;          // tiene que venir del oeste o noroeste
+  if (hum <= 20 && raf >= 55) return 2;
+  if (hum <= 30 && raf >= 40) return 1;
+  return 0;
 }
 
 // =================== Calidad del aire ===================
@@ -1090,13 +1188,19 @@ async function actualizarRayos() {
     const r = await fetch(PROXY + "/rayos", { cache: "no-store" });
     if (!r.ok) throw new Error("HTTP " + r.status);
     const d = await r.json(), ahora = Date.now();
+    let cerca = false;
     for (const x of d.rayos || []) {
       const clave = `${x.id}-${x.hora}`;
       if (rayos.has(clave)) continue;
       const t = horaUtcAMs(x.hora, ahora);
       if (t === null || !isFinite(x.lat) || !isFinite(x.lon)) continue;
-      rayos.set(clave, { lat: x.lat, lon: x.lon, t, marcador: null });
+      // Destello: los que aparecen con la app ya abierta, y al abrirla solo los de los últimos 2 minutos
+      const nuevo = ahora - t < (rayosPrimeraCarga ? 2 : 6) * 60000;
+      rayos.set(clave, { lat: x.lat, lon: x.lon, t, marcador: null, e: -1, nuevo });
+      if (nuevo && !rayosPrimeraCarga && kmEntre(pos.lat, pos.lon, x.lat, x.lon) <= 25) cerca = true;
     }
+    rayosPrimeraCarga = false;
+    if (cerca && tabActual === "radar" && $("chkRayos").checked) destelloMapa();
     rayosOk = true;
   } catch (e) { rayosOk = false; }
   dibujarRayos();
@@ -1109,14 +1213,37 @@ function dibujarRayos() {
     const edad = ahora - r.t;
     if (edad > RAYOS_VIDA_MS) { if (r.marcador) capaRayos.removeLayer(r.marcador); rayos.delete(clave); continue; }
     n++;
-    const reciente = edad < 5 * 60000;
-    const estilo = { radius: reciente ? 6 : 4, color: "#1d2630", weight: 1, fillColor: reciente ? "#ffeb3b" : "#ff9800", fillOpacity: reciente ? 1 : 0.6 };
-    if (!r.marcador) { r.marcador = L.circleMarker([r.lat, r.lon], estilo).bindPopup(`⚡ Rayo a las ${horaLocal(r.t)}`); capaRayos.addLayer(r.marcador); }
-    else { r.marcador.setStyle(estilo); r.marcador.setRadius(estilo.radius); }
+    // Color según antigüedad: blanco (menos de 2 min), amarillo (5), naranja (10), rojo oscuro (15)
+    const e = edad < 2 * 60000 ? 0 : edad < 5 * 60000 ? 1 : edad < 10 * 60000 ? 2 : 3;
+    const orden = -Math.round(edad / 1000); // los más nuevos quedan arriba
+    if (!r.marcador) {
+      r.e = e;
+      r.marcador = L.marker([r.lat, r.lon], { icon: iconoRayo(e, r.nuevo), zIndexOffset: orden, keyboard: false }).bindPopup(`⚡ Rayo a las ${horaLocal(r.t)}`);
+      capaRayos.addLayer(r.marcador);
+      if (r.nuevo) { r.nuevo = false; setTimeout(() => { if (r.marcador) r.marcador.setIcon(iconoRayo(r.e, false)); }, 4000); }
+    } else if (r.e !== e) {
+      r.e = e;
+      r.marcador.setIcon(iconoRayo(e, false));
+      r.marcador.setZIndexOffset(orden);
+    }
   }
   if (!usarProxy) $("rayosInfo").textContent = "Rayos no disponibles: sin conexión con el intermediario.";
   else if (rayosOk === false) $("rayosInfo").textContent = "No pude actualizar los rayos. Reintento en 30 segundos.";
-  else $("rayosInfo").textContent = `⚡ ${n} rayo${n === 1 ? "" : "s"} en los últimos 15 min (amarillo: últimos 5 min).`;
+  else $("rayosInfo").textContent = `⚡ ${n} rayo${n === 1 ? "" : "s"} en los últimos 15 min. Blanco: recién caído (menos de 2 min) · amarillo: 5 min · naranja: 10 min · rojo: 15 min.`;
+}
+function iconoRayo(e, nuevo) {
+  return L.divIcon({
+    className: "rayoIcono", iconSize: [20, 20], iconAnchor: [10, 10], popupAnchor: [0, -8],
+    html: `<div class="rayo e${e}${nuevo ? " nuevo" : ""}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13.5 1.5 4 14h6.2L8.8 22.5 20 9.5h-6.6z"/></svg></div>`
+  });
+}
+// Fogonazo sobre todo el mapa cuando cae un rayo a menos de 25 km tuyo
+function destelloMapa() {
+  const caja = $("mapaCaja");
+  caja.classList.remove("destello");
+  void caja.offsetWidth; // reinicia la animación
+  caja.classList.add("destello");
+  setTimeout(() => caja.classList.remove("destello"), 600);
 }
 
 // =================== Radar de Mendoza ===================
@@ -1259,6 +1386,315 @@ async function refrescar() {
   evaluarAlarma();
 }
 
+// =================== Capas del mapa: vista satelital, nubes y viento ===================
+const GIBS = "https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/";
+const NUBES = {
+  color: { capa: "GOES-East_ABI_GeoColor", nivel: 7, nombre: "color real" },
+  ir: { capa: "GOES-East_ABI_Band13_Clean_Infrared", nivel: 6, nombre: "infrarrojo" }
+};
+const NUBES_CADA_MS = 5 * 60 * 1000;
+const VIENTO_PUNTOS = 10;                 // grilla de 10 x 10 puntos por consulta
+const VIENTO_VIDA_MS = 30 * 60 * 1000;    // la grilla se reutiliza media hora
+const VIENTO_ESCALA = [[0, [98, 113, 183]], [10, [57, 160, 192]], [20, [74, 190, 130]], [30, [130, 200, 80]], [40, [220, 200, 60]],
+  [55, [235, 140, 50]], [70, [220, 70, 60]], [90, [180, 50, 140]], [120, [120, 40, 160]]];
+let capaCalles = null, capaSat = null, capaNombres = null, capaNubes = null, capaViento = null;
+let fondoSat = leerLocal("miClimaFondoSat") === true;
+let nubesOn = leerLocal("miClimaNubes") === true, nubesTipo = leerLocal("miClimaNubesTipo") === "ir" ? "ir" : "color", nubesHora = null, pedidoNubes = 0;
+let vientoOn = leerLocal("miClimaViento") === true, vientoHoras = 0, vientoRafagas = false;
+let vientoGrillas = [], vientoActual = null, vientoCampo = null, vientoPedido = 0, vientoTimer = null, vientoUltimo = 0;
+
+function colorViento(v) {
+  const e = VIENTO_ESCALA;
+  if (!(v > 0)) return e[0][1];
+  for (let i = 1; i < e.length; i++) if (v <= e[i][0]) {
+    const f = (v - e[i - 1][0]) / (e[i][0] - e[i - 1][0]), a = e[i - 1][1], b = e[i][1];
+    return [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f, a[2] + (b[2] - a[2]) * f];
+  }
+  return e[e.length - 1][1];
+}
+
+// ---- Nubes: imagen del satélite GOES-East con el suelo transparente, para que se vea el mapa abajo ----
+const CapaNubes = L.GridLayer.extend({
+  createTile(coords, listo) {
+    const tile = document.createElement("canvas");
+    tile.width = tile.height = 256;
+    const cfg = NUBES[this.options.tipo], ir = this.options.tipo === "ir", c = this._wrapCoords(coords), img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => {
+      try {
+        const ctx = tile.getContext("2d");
+        ctx.drawImage(img, 0, 0, 256, 256);
+        const datos = ctx.getImageData(0, 0, 256, 256), d = datos.data;
+        for (let p = 0; p < d.length; p += 4) {
+          const r = d[p], g = d[p + 1], b = d[p + 2], min = Math.min(r, g, b), sat = Math.max(r, g, b) - min;
+          let a;
+          if (ir) a = sat > 45 ? 0.8 : Math.max(0, Math.min(1, ((r + g + b) / 3 - 120) / 70)) * 0.75;   // topes fríos en color, nubes bajas en gris
+          else a = Math.max(0, Math.min(1, (min - 70) / 80)) * Math.max(0, Math.min(1, 1 - (sat - 30) / 70)) * 0.94; // blanco o gris = nube
+          d[p + 3] = Math.round(d[p + 3] * a);
+        }
+        ctx.putImageData(datos, 0, 0);
+      } catch (e) { /* si no se puede procesar, queda la imagen tal cual */ }
+      listo(null, tile);
+    };
+    img.onerror = () => listo(new Error("sin imagen"), tile);
+    img.src = `${GIBS}${cfg.capa}/default/${this.options.hora || "default"}/GoogleMapsCompatible_Level${cfg.nivel}/${c.z}/${c.y}/${c.x}.png`;
+    return tile;
+  }
+});
+function infoNubes() {
+  const el = $("nubesInfo");
+  if (!nubesOn) return;
+  let txt = nubesHora ? `Imagen de las ${horaLocal(nubesHora)} (hace ${Math.max(0, Math.round((Date.now() - nubesHora) / 60000))} min). ` : "Última imagen disponible. ";
+  txt += nubesTipo === "ir"
+    ? "Infrarrojo: en gris las nubes bajas; en celeste, azul, verde, amarillo y rojo las nubes cada vez más altas y frías (tormentas). Sirve de día y de noche."
+    : "Color real: de día se ven las nubes como desde el espacio; de noche aparecen en gris.";
+  txt += " El satélite llega con una demora de 40 a 70 minutos: para lo que pasa ahora mismo, mirá el radar.";
+  el.textContent = txt;
+}
+// Averigua de qué hora es la última imagen y recarga la capa si hay una nueva
+async function actualizarNubes(forzar) {
+  if (!nubesOn || !map) return;
+  const tipo = nubesTipo, cfg = NUBES[tipo], yo = ++pedidoNubes;
+  let hora = null;
+  try {
+    const r = await fetch(`${GIBS}${cfg.capa}/default/default/GoogleMapsCompatible_Level${cfg.nivel}/0/0/0.png`, { method: "HEAD", cache: "no-store" });
+    const h = r.ok ? r.headers.get("layer-time-actual") : null;
+    if (h && /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$/.test(h)) hora = h;
+  } catch (e) { /* sin la hora: se pide la última imagen igual */ }
+  if (yo !== pedidoNubes || !nubesOn || tipo !== nubesTipo) return;
+  if (capaNubes && !forzar && hora && capaNubes.options.tipo === tipo && capaNubes.options.hora === hora) { infoNubes(); return; }
+  if (capaNubes) map.removeLayer(capaNubes);
+  capaNubes = new CapaNubes({ tipo, hora, maxNativeZoom: cfg.nivel, maxZoom: 18, zIndex: 300, attribution: "Nubes: NASA GIBS · NOAA GOES-East" }).addTo(map);
+  nubesHora = hora ? Date.parse(hora) : null;
+  infoNubes();
+}
+
+// ---- Viento: fondo de color según la intensidad y partículas que siguen la dirección ----
+const CapaViento = L.Layer.extend({
+  onAdd(m) {
+    if (!m.getPane("vientoFondo")) {
+      const f = m.createPane("vientoFondo"); f.style.zIndex = 350; f.style.pointerEvents = "none";   // debajo del radar
+      const p = m.createPane("vientoPart"); p.style.zIndex = 450; p.style.pointerEvents = "none";     // arriba del radar
+    }
+    this._fondo = L.DomUtil.create("canvas", "", m.getPane("vientoFondo"));
+    this._lienzo = L.DomUtil.create("canvas", "", m.getPane("vientoPart"));
+    this._fondo.style.position = this._lienzo.style.position = "absolute";
+    this._chico = document.createElement("canvas");
+    m.on("moveend zoomend resize", this._armar, this);
+    m.on("zoomstart", this._ocultar, this);
+    this._vivo = true;
+    this._armar();
+    const cuadro = t => { if (!this._vivo) return; this._paso(t); this._raf = requestAnimationFrame(cuadro); };
+    this._raf = requestAnimationFrame(cuadro);
+  },
+  onRemove(m) {
+    this._vivo = false;
+    cancelAnimationFrame(this._raf);
+    m.off("moveend zoomend resize", this._armar, this);
+    m.off("zoomstart", this._ocultar, this);
+    this._fondo.remove(); this._lienzo.remove();
+  },
+  setCampo(campo) { this._campo = campo; if (this._map) this._armar(); },
+  _ocultar() { this._oculto = true; this._fondo.style.visibility = this._lienzo.style.visibility = "hidden"; },
+  // Calcula el viento en una cuadrícula de la pantalla (un valor cada 8 píxeles) y pinta el fondo
+  _armar() {
+    const m = this._map, tam = m.getSize();
+    if (!tam.x || !tam.y) return;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2), origen = m.containerPointToLayerPoint([0, 0]);
+    for (const cv of [this._fondo, this._lienzo]) {
+      L.DomUtil.setPosition(cv, origen);
+      cv.width = Math.round(tam.x * dpr); cv.height = Math.round(tam.y * dpr);
+      cv.style.width = tam.x + "px"; cv.style.height = tam.y + "px";
+      cv.style.visibility = "";
+    }
+    this._oculto = false;
+    this._dpr = dpr; this._w = tam.x; this._h = tam.y;
+    const paso = 8, cols = Math.ceil(tam.x / paso) + 1, filas = Math.ceil(tam.y / paso) + 1;
+    this._paso8 = paso; this._cols = cols; this._filas = filas;
+    this._u = new Float32Array(cols * filas).fill(NaN);
+    this._v = new Float32Array(cols * filas);
+    const campo = this._campo, fctx = this._fondo.getContext("2d");
+    fctx.clearRect(0, 0, this._fondo.width, this._fondo.height);
+    if (campo) {
+      const lons = new Float64Array(cols), lats = new Float64Array(filas);
+      for (let i = 0; i < cols; i++) lons[i] = m.containerPointToLatLng([i * paso, 0]).lng;
+      for (let j = 0; j < filas; j++) lats[j] = m.containerPointToLatLng([0, j * paso]).lat;
+      this._chico.width = cols; this._chico.height = filas;
+      const cctx = this._chico.getContext("2d"), img = cctx.createImageData(cols, filas), px = img.data;
+      for (let j = 0; j < filas; j++) for (let i = 0; i < cols; i++) {
+        const w = vientoEn(campo, lats[j], lons[i]);
+        if (!w) continue;
+        const k = j * cols + i, col = colorViento(w.vel);
+        this._u[k] = w.u; this._v[k] = w.v;
+        px[k * 4] = col[0]; px[k * 4 + 1] = col[1]; px[k * 4 + 2] = col[2]; px[k * 4 + 3] = 112;
+      }
+      cctx.putImageData(img, 0, 0);
+      fctx.imageSmoothingEnabled = true;
+      fctx.drawImage(this._chico, 0, 0, cols, filas, -paso / 2 * dpr, -paso / 2 * dpr, cols * paso * dpr, filas * paso * dpr);
+    }
+    const n = Math.max(150, Math.min(1500, Math.round(tam.x * tam.y / 260)));
+    this._px = new Float32Array(n); this._py = new Float32Array(n); this._edad = new Float32Array(n);
+    for (let i = 0; i < n; i++) this._nacer(i, true);
+    const ctx = this._lienzo.getContext("2d");
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, tam.x, tam.y);
+    this._t = 0;
+  },
+  _nacer(i, alAzar) {
+    this._px[i] = Math.random() * this._w; this._py[i] = Math.random() * this._h;
+    this._edad[i] = alAzar ? Math.random() * 3 : 0;
+  },
+  _paso(t) {
+    const dt = this._t ? Math.min(0.05, (t - this._t) / 1000) : 0.016;
+    this._t = t;
+    if (this._oculto || !this._campo || !this._px || tabActual !== "radar") return;
+    const ctx = this._lienzo.getContext("2d"), W = this._w, H = this._h, paso = this._paso8, cols = this._cols;
+    // Las estelas se van apagando de a poco
+    ctx.globalCompositeOperation = "destination-in";
+    ctx.fillStyle = `rgba(0,0,0,${Math.pow(0.90, dt * 60).toFixed(3)})`;
+    ctx.fillRect(0, 0, W, H);
+    ctx.globalCompositeOperation = "source-over";
+    ctx.lineWidth = 1.5; ctx.lineCap = "round";
+    ctx.strokeStyle = "rgba(255,255,255,0.92)";
+    ctx.beginPath();
+    const K = 2.4 * dt; // píxeles por cada km/h
+    for (let i = 0; i < this._px.length; i++) {
+      const x = this._px[i], y = this._py[i];
+      const k = Math.round(y / paso) * cols + Math.round(x / paso), u = this._u[k];
+      if (!(u === u) || (this._edad[i] += dt) > 3.5) { this._nacer(i, false); continue; }
+      const nx = x + u * K, ny = y - this._v[k] * K;
+      if (nx < 0 || ny < 0 || nx > W || ny > H) { this._nacer(i, false); continue; }
+      ctx.moveTo(x, y); ctx.lineTo(nx, ny);
+      this._px[i] = nx; this._py[i] = ny;
+    }
+    ctx.stroke();
+  }
+});
+// Viento en un punto de la grilla (interpolando entre los 4 puntos vecinos). Devuelve null si cae afuera.
+function vientoEn(c, lat, lon) {
+  const fx = (lon - c.oeste) / c.dlon, fy = (lat - c.sur) / c.dlat;
+  if (!(fx >= 0 && fy >= 0 && fx <= c.n - 1 && fy <= c.n - 1)) return null;
+  const i = Math.min(c.n - 2, Math.floor(fx)), j = Math.min(c.n - 2, Math.floor(fy)), a = fx - i, b = fy - j;
+  const k00 = j * c.n + i, k10 = k00 + 1, k01 = k00 + c.n, k11 = k01 + 1;
+  const mezcla = arr => (arr[k00] * (1 - a) + arr[k10] * a) * (1 - b) + (arr[k01] * (1 - a) + arr[k11] * a) * b;
+  const u = mezcla(c.u), v = mezcla(c.v);
+  return { u, v, vel: Math.hypot(u, v), medio: mezcla(c.medio), raf: mezcla(c.raf) };
+}
+// Arma el campo de viento para la hora elegida (viento medio o ráfagas)
+function usarGrilla(g) {
+  vientoActual = g;
+  const objetivo = Date.now() + vientoHoras * 3600000;
+  let h = 0;
+  for (let i = 1; i < g.horas.length; i++) if (Math.abs(g.horas[i] - objetivo) < Math.abs(g.horas[h] - objetivo)) h = i;
+  const total = g.n * g.n, u = new Float32Array(total), v = new Float32Array(total), medio = new Float32Array(total), raf = new Float32Array(total);
+  for (let k = 0; k < total; k++) {
+    const vel = g.vel[k][h] || 0, dir = (g.dir[k][h] || 0) * Math.PI / 180, r = Math.max(vel, g.raf[k][h] || 0);
+    const fuerza = vientoRafagas ? r : vel;
+    u[k] = -fuerza * Math.sin(dir); v[k] = -fuerza * Math.cos(dir); // la dirección dice de dónde viene el viento
+    medio[k] = vel; raf[k] = r;
+  }
+  vientoCampo = { sur: g.sur, oeste: g.oeste, dlat: g.dlat, dlon: g.dlon, n: g.n, u, v, medio, raf, hora: g.horas[h] };
+  if (capaViento) capaViento.setCampo(vientoCampo);
+  $("vientoInfo").textContent = `${vientoRafagas ? "Ráfagas previstas" : "Viento previsto"} para las ${horaLocal(g.horas[h])}. Las líneas van hacia donde sopla el viento y son más rápidas donde es más fuerte. ` +
+    "Tocá el mapa para ver el valor en ese punto. Es un pronóstico (Open-Meteo), no una medición en vivo.";
+}
+function grillaSirve(g, b) {
+  if (Date.now() - g.t > VIENTO_VIDA_MS) return false;
+  if (g.sur > b.getSouth() || g.norte < b.getNorth() || g.oeste > b.getWest() || g.este < b.getEast()) return false;
+  return g.dlon <= 0.1 || (g.este - g.oeste) <= 3.2 * (b.getEast() - b.getWest()); // que no sea demasiado gruesa para este zoom
+}
+function programarViento(ms) { clearTimeout(vientoTimer); vientoTimer = setTimeout(cargarViento, ms === undefined ? 1200 : ms); }
+async function cargarViento() {
+  if (!vientoOn || !map || tabActual !== "radar") return;
+  const b = map.getBounds();
+  if (!(b.getEast() > b.getWest()) || !(b.getNorth() > b.getSouth())) return;
+  const sirve = vientoGrillas.find(g => grillaSirve(g, b));
+  if (sirve) { if (sirve !== vientoActual) usarGrilla(sirve); return; }
+  const espera = 4000 - (Date.now() - vientoUltimo);
+  if (espera > 0) { programarViento(espera); return; }
+  vientoUltimo = Date.now();
+  const yo = ++vientoPedido, n = VIENTO_PUNTOS, el = $("vientoInfo");
+  if (!vientoActual) el.textContent = "Cargando el viento…";
+  try {
+    // La grilla cubre un poco más que la pantalla; nunca más fina que 0,08° (el modelo no tiene más detalle)
+    const amp = b.pad(0.5), cLat = (amp.getNorth() + amp.getSouth()) / 2, cLon = (amp.getEast() + amp.getWest()) / 2;
+    const altoG = Math.max(amp.getNorth() - amp.getSouth(), 0.08 * (n - 1)), anchoG = Math.max(amp.getEast() - amp.getWest(), 0.08 * (n - 1));
+    const sur = Math.max(-85, cLat - altoG / 2), norte = Math.min(85, cLat + altoG / 2), oeste = cLon - anchoG / 2, este = cLon + anchoG / 2;
+    const dlat = (norte - sur) / (n - 1), dlon = (este - oeste) / (n - 1), lats = [], lons = [];
+    for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) { lats.push((sur + j * dlat).toFixed(2)); lons.push((((oeste + i * dlon + 540) % 360) - 180).toFixed(2)); }
+    const r = await fetch("https://api.open-meteo.com/v1/forecast" + `?latitude=${lats.join(",")}&longitude=${lons.join(",")}` +
+      "&hourly=wind_speed_10m,wind_direction_10m,wind_gusts_10m&forecast_hours=25&timezone=GMT");
+    if (r.status === 429) throw new Error("Open-Meteo está limitando las consultas, probá en un rato");
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    const datos = await r.json(), lista = Array.isArray(datos) ? datos : [datos];
+    if (lista.length !== n * n || !lista[0].hourly || !Array.isArray(lista[0].hourly.time)) throw new Error("datos incompletos");
+    const g = {
+      t: Date.now(), sur, norte, oeste, este, dlat, dlon, n,
+      horas: lista[0].hourly.time.map(x => Date.parse(x + "Z")),
+      vel: lista.map(p => p.hourly.wind_speed_10m || []), dir: lista.map(p => p.hourly.wind_direction_10m || []), raf: lista.map(p => p.hourly.wind_gusts_10m || [])
+    };
+    vientoGrillas = [g, ...vientoGrillas.filter(x => Date.now() - x.t < VIENTO_VIDA_MS)].slice(0, 5);
+    if (yo === vientoPedido && vientoOn) usarGrilla(g);
+  } catch (e) {
+    if (yo === vientoPedido) el.textContent = "No pude cargar el viento: " + e.message + (vientoActual ? ". Sigo mostrando el último que tenía." : ".");
+  }
+}
+function tocarMapaViento(e) {
+  if (!vientoOn || !vientoCampo) return;
+  const w = vientoEn(vientoCampo, e.latlng.lat, e.latlng.lng);
+  if (!w) return;
+  const dir = (Math.atan2(-w.u, -w.v) * 180 / Math.PI + 360) % 360;
+  L.popup().setLatLng(e.latlng).setContent(`💨 <b>${r0(w.medio)} km/h</b> del ${direccion(dir)}<br>Ráfagas: ${r0(w.raf)} km/h<br><span style="color:#5b6876">Pronóstico para las ${horaLocal(vientoCampo.hora)}</span>`).openOn(map);
+}
+
+// ---- Botones de capas ----
+function aplicarFondo() {
+  if (fondoSat) { map.removeLayer(capaCalles); capaSat.addTo(map); capaNombres.addTo(map); }
+  else { map.removeLayer(capaSat); map.removeLayer(capaNombres); capaCalles.addTo(map); }
+}
+function aplicarNubes(forzar) {
+  if (nubesOn) actualizarNubes(forzar);
+  else if (capaNubes) { map.removeLayer(capaNubes); capaNubes = null; }
+}
+function aplicarViento() {
+  if (vientoOn) {
+    if (!capaViento) capaViento = new CapaViento();
+    if (!map.hasLayer(capaViento)) capaViento.addTo(map);
+    if (vientoCampo) capaViento.setCampo(vientoCampo);
+    cargarViento();
+  } else {
+    if (capaViento && map.hasLayer(capaViento)) map.removeLayer(capaViento);
+    map.closePopup();
+  }
+}
+function marcarCapas() {
+  for (const [id, on] of [["chipSat", fondoSat], ["chipNubes", nubesOn], ["chipViento", vientoOn]]) { $(id).classList.toggle("on", on); $(id).setAttribute("aria-pressed", String(on)); }
+  $("panelCapas").style.display = nubesOn || vientoOn ? "" : "none";
+  $("panelViento").style.display = vientoOn ? "" : "none";
+  $("panelNubes").style.display = nubesOn ? "" : "none";
+  document.querySelectorAll("#segNubes button").forEach(b => b.classList.toggle("on", b.dataset.n === nubesTipo));
+  document.querySelectorAll("#segVientoHora button").forEach(b => b.classList.toggle("on", Number(b.dataset.h) === vientoHoras));
+  document.querySelectorAll("#segVientoTipo button").forEach(b => b.classList.toggle("on", (b.dataset.r === "1") === vientoRafagas));
+}
+function iniciarCapas() {
+  capaCalles = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 18, attribution: "© OpenStreetMap" });
+  capaSat = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", { maxZoom: 18, attribution: "Imágenes © Esri, Maxar, Earthstar Geographics" });
+  capaNombres = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}", { maxZoom: 18, zIndex: 500 });
+  $("escalaViento").style.background = "linear-gradient(90deg," + [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100].map(v => `rgb(${colorViento(v).map(Math.round).join(",")})`).join(",") + ")";
+  aplicarFondo(); aplicarNubes(false); aplicarViento(); marcarCapas();
+  map.on("moveend", () => { if (vientoOn) programarViento(); });
+  map.on("click", tocarMapaViento);
+  $("chipSat").addEventListener("click", () => { fondoSat = !fondoSat; guardarLocal("miClimaFondoSat", fondoSat); aplicarFondo(); marcarCapas(); });
+  $("chipNubes").addEventListener("click", () => { nubesOn = !nubesOn; guardarLocal("miClimaNubes", nubesOn); aplicarNubes(false); marcarCapas(); });
+  $("chipViento").addEventListener("click", () => { vientoOn = !vientoOn; guardarLocal("miClimaViento", vientoOn); aplicarViento(); marcarCapas(); });
+  document.querySelectorAll("#segNubes button").forEach(b => b.addEventListener("click", () => {
+    if (nubesTipo === b.dataset.n) return;
+    nubesTipo = b.dataset.n; guardarLocal("miClimaNubesTipo", nubesTipo); $("nubesInfo").textContent = "Cargando…"; marcarCapas(); aplicarNubes(true);
+  }));
+  document.querySelectorAll("#segVientoHora button").forEach(b => b.addEventListener("click", () => { vientoHoras = Number(b.dataset.h); marcarCapas(); if (vientoActual) usarGrilla(vientoActual); }));
+  document.querySelectorAll("#segVientoTipo button").forEach(b => b.addEventListener("click", () => { vientoRafagas = b.dataset.r === "1"; marcarCapas(); if (vientoActual) usarGrilla(vientoActual); }));
+}
+
 // =================== Ubicación ===================
 function ponerMarcador() {
   if (!map) return;
@@ -1299,7 +1735,7 @@ $("btnPush").addEventListener("click", activarAvisos);
 $("btnPrueba").addEventListener("click", avisoDePrueba);
 $("chkPantalla").addEventListener("change", e => { if (e.target.checked) pedirPantallaEncendida(); else if (bloqueoPantalla) { bloqueoPantalla.release().catch(() => {}); bloqueoPantalla = null; } });
 document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState === "visible") { refrescar(); actualizarRayos(); pedirPantallaEncendida(); enviarUbicacionAvisos(); mostrarInfoAvisos(); }
+  if (document.visibilityState === "visible") { refrescar(); actualizarRayos(); pedirPantallaEncendida(); enviarUbicacionAvisos(); mostrarInfoAvisos(); if (tabActual === "radar") { actualizarNubes(false); cargarViento(); } }
 });
 
 // =================== Inicio ===================
@@ -1318,7 +1754,7 @@ async function iniciar() {
   const preferencia = leerLocal("miClimaLimpio");
   if (preferencia === false) { limpio = false; $("chkLimpio").checked = false; }
   map = L.map("map").setView([pos.lat, pos.lon], guardada ? 10 : 8);
-  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 18, attribution: "© OpenStreetMap" }).addTo(map);
+  iniciarCapas();
   capaRayos = L.layerGroup().addTo(map);
   ponerMarcador();
   actualizarCabecera();
@@ -1346,6 +1782,7 @@ async function iniciar() {
   setInterval(refrescar, PASO_MS);
   setInterval(actualizarRayos, RAYOS_CADA_MS);
   setInterval(() => { if (document.visibilityState === "visible") { cargarClima(); cargarAire(); } }, CLIMA_CADA_MS);
+  setInterval(() => { if (document.visibilityState === "visible" && tabActual === "radar") { actualizarNubes(false); cargarViento(); } }, NUBES_CADA_MS);
 }
 iniciar().catch(e => { info.textContent = "Error al iniciar la app: " + e.message; });
 </script>
