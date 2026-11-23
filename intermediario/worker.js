@@ -1,4 +1,4 @@
-// Mi Clima - intermediario (Cloudflare Worker) - versión 3
+// Mi Clima - intermediario (Cloudflare Worker) - versión 4
 // 1) Deja que la app lea del sitio de Contingencias Climáticas de Mendoza:
 //      /rayos                              -> rayos del satélite (solo zona Mendoza)
 //      /radar/AAAAMMDD/HHMMSS_dbz.png      -> imagen del radar
@@ -9,6 +9,11 @@
 //    las genera solo la primera vez y las guarda en ese KV.
 // 3) Hasta 10 celulares. Opcional: si cargás un secreto llamado CODIGO, solo se pueden anotar
 //    los celulares que escriban ese código de invitación.
+// 4) (versión 4) Avisos oficiales del SMN y reportes de lo que cae:
+//      /smn                 -> lista de avisos del SMN (feed CAP oficial)
+//      /smn?u=<enlace>      -> detalle de un aviso (solo enlaces de ssl.smn.gob.ar/feeds/)
+//      GET  /reportes       -> reportes de los usuarios de las últimas 3 horas
+//      POST /reportes       -> guarda un reporte {lat, lon, tipo, tam} (usa el KV MI_CLIMA)
 
 const ORIGEN = "https://www2.contingencias.mendoza.gov.ar";
 const APP = "https://bustosmartin181-dotcom.github.io/mi-clima/";
@@ -517,6 +522,52 @@ async function revisar(env, momento, intervaloMin) {
   return { suscripciones: lista.length, revisados: lote.length, guardo: cambio };
 }
 
+// ---------- Avisos oficiales del SMN (feed CAP) ----------
+const SMN_FEED = "https://ssl.smn.gob.ar/CAP/AR.php";
+const SMN_DETALLE = /^https:\/\/ssl\.smn\.gob\.ar\/feeds\/[A-Za-z0-9_\/.-]+\.xml$/;
+async function smn(url, cors) {
+  const u = url.searchParams.get("u");
+  const destino = u ? u : SMN_FEED;
+  if (u && !SMN_DETALLE.test(u)) return texto("Enlace no permitido", 400, cors);
+  try {
+    const r = await fetch(destino, { headers: { "User-Agent": "MiClima/4 (uso personal)" }, cf: { cacheTtl: u ? 3600 : 300, cacheEverything: true } });
+    if (!r.ok) return texto("El SMN respondió " + r.status, 502, cors);
+    return new Response(await r.text(), { status: 200, headers: Object.assign({ "Content-Type": "application/xml; charset=utf-8", "Cache-Control": "public, max-age=" + (u ? 3600 : 300) }, cors) });
+  } catch (e) {
+    return texto("No pude leer el SMN: " + e.message, 502, cors);
+  }
+}
+
+// ---------- Reportes de los usuarios (qué está cayendo) ----------
+const REPORTE_VIDA_MS = 3 * 3600000;
+const REPORTE_TIPOS = ["nada", "llovizna", "lluvia", "lluviaFuerte", "granizo", "viento", "nieve"];
+const REPORTE_TAMS = ["", "arveja", "garbanzo", "nuez", "huevo"];
+async function leerReportes(env) {
+  const lista = JSON.parse((await env.MI_CLIMA.get("reportes")) || "[]");
+  const ahora = Date.now();
+  return lista.filter(r => ahora - r.t < REPORTE_VIDA_MS);
+}
+async function reportes(request, env, cors) {
+  if (request.method === "GET") {
+    const lista = await leerReportes(env);
+    return json({ reportes: lista.map(({ ip, ...r }) => r) }, 200, cors);
+  }
+  let b;
+  try { b = await request.json(); } catch (e) { return texto("Pedido inválido", 400, cors); }
+  const lat = Number(b.lat), lon = Number(b.lon);
+  if (!isFinite(lat) || !isFinite(lon) || lat < ZONA.sur - 3 || lat > ZONA.norte + 3 || lon < ZONA.oeste - 3 || lon > ZONA.este + 3) return texto("Ubicación fuera de la zona", 400, cors);
+  if (!REPORTE_TIPOS.includes(b.tipo)) return texto("Tipo inválido", 400, cors);
+  const tam = REPORTE_TAMS.includes(b.tam) ? b.tam : "";
+  const ip = request.headers.get("CF-Connecting-IP") || "?";
+  const lista = await leerReportes(env);
+  if (lista.some(r => r.ip === ip && Date.now() - r.t < 2 * 60000)) return texto("Esperá un par de minutos para mandar otro reporte", 429, cors);
+  const nuevo = { id: crypto.randomUUID().slice(0, 8), t: Date.now(), lat: Math.round(lat * 100) / 100, lon: Math.round(lon * 100) / 100, tipo: b.tipo, tam, ip };
+  lista.push(nuevo);
+  await env.MI_CLIMA.put("reportes", JSON.stringify(lista.slice(-300)));
+  const { ip: _, ...publico } = nuevo;
+  return json({ ok: true, reporte: publico }, 200, cors);
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -524,10 +575,15 @@ export default {
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
 
     if (request.method === "GET" || request.method === "HEAD") {
-      if (url.pathname === "/") return texto("Mi Clima: intermediario funcionando (versión 3)" + (env.MI_CLIMA ? " · avisos listos" : " · falta conectar el KV MI_CLIMA") + (env.CODIGO ? " · con código de invitación" : ""), 200, cors);
+      if (url.pathname === "/") return texto("Mi Clima: intermediario funcionando (versión 4)" + (env.MI_CLIMA ? " · avisos listos" : " · falta conectar el KV MI_CLIMA") + (env.CODIGO ? " · con código de invitación" : ""), 200, cors);
       if (url.pathname === "/rayos") return rayos(cors);
+      if (url.pathname === "/smn") return smn(url, cors);
       const m = url.pathname.match(RUTA_RADAR);
       if (m) return imagenRadar(m, cors);
+    }
+    if (url.pathname === "/reportes" && (request.method === "GET" || request.method === "POST")) {
+      if (!env.MI_CLIMA) return texto("Falta conectar el espacio KV con el nombre MI_CLIMA", 503, cors);
+      try { return await reportes(request, env, cors); } catch (e) { return texto("Error: " + e.message, 500, cors); }
     }
     const rutasAvisos = ["/vapid", "/suscribir", "/ubicacion", "/desuscribir", "/probar", "/aviso", "/estado"];
     if (rutasAvisos.includes(url.pathname)) {
