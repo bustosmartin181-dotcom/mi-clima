@@ -1976,7 +1976,7 @@ function usarTormentas(g) {
   else if (peor < 3) res.textContent = peor ? `Para ${nombre}: sin tormentas en la zona del mapa, solo ${TORM_TEXTOS[peor]} en algunos sectores.` : `Para ${nombre}: sin lluvia ni tormentas en la zona del mapa.`;
   else res.textContent = `Para ${nombre}: ${TORM_TEXTOS[peor]} en algunos sectores. ` +
     (cerca.d < 8 ? `Te toca a vos (a eso de las ${horaLocal(cerca.x.cuando)}).` : `La más cercana a vos: a ${km(cerca.d)} km al ${direccion(cerca.rumbo)}, a eso de las ${horaLocal(cerca.x.cuando)}.`);
-  $("tormentasInfo").textContent = "Pronóstico de los modelos (Open-Meteo) en una grilla sobre lo que ves en el mapa: marca dónde es más probable que se armen tormentas, no el lugar exacto. Tocá el mapa para ver el detalle de un punto. Para lo que pasa ahora, mirá el radar.";
+  $("tormentasInfo").textContent = `Cada punto de la grilla está a unos ${Math.round(g.dlat * 111)} km del siguiente: para más detalle, acercá el mapa a una zona y se vuelve a calcular. ` + "Pronóstico de los modelos (Open-Meteo) en una grilla sobre lo que ves en el mapa: marca dónde es más probable que se armen tormentas, no el lugar exacto. Tocá el mapa para ver el detalle de un punto. Para lo que pasa ahora, mirá el radar.";
 }
 function tocarMapaTormentas(e) {
   if (!tormOn || !tormCampo) return;
@@ -2831,7 +2831,9 @@ $("btnVerTormentas").addEventListener("click", () => {
   if (!tormOn) { tormOn = true; guardarLocal("miClimaTormentas", true); }
   const h = new Date().getHours(); tormVentana = h >= 19 || h < 6 ? "noche" : "tarde";
   marcarCapas(); mostrarTab("radar");
-  const l = lugarActual(); map.setView([l.lat, l.lon], 7);
+  // dentro de Mendoza muestra la provincia entera; en otro lugar, la zona alrededor
+  const l = lugarActual(), MZA_PROV = [[-37.6, -70.6], [-32.0, -66.5]];
+  if (l.lat <= -32 && l.lat >= -37.6 && l.lon >= -70.6 && l.lon <= -66.5) map.fitBounds(MZA_PROV, { padding: [4, 4] }); else map.setView([l.lat, l.lon], 7);
   tormActual = null; setTimeout(() => { aplicarTormentas(); }, 150);
 });
 $("btnEscuchar").addEventListener("click", () => hablar(textoEstadoParaLeer(), true));
