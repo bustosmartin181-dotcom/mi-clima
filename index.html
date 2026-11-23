@@ -2230,7 +2230,7 @@ function dibujarReportes() {
 }
 
 // =================== Avisos oficiales del SMN ===================
-let smnCache = leerLocal("miClimaSmn") || {}, smnCargando = false, smnAvisados = new Set(leerLocal("miClimaSmnAvisados") || []);
+let smnCache = leerLocal("miClimaSmn") || {}, smnCargando = false, smnPendientes = 0, smnAvisados = new Set(leerLocal("miClimaSmnAvisados") || []);
 function enPoligono(lat, lon, pol) {
   let dentro = false;
   for (let i = 0, j = pol.length - 1; i < pol.length; j = i++) {
@@ -2267,14 +2267,23 @@ async function cargarSmn() {
     // se bajan solo los avisos nuevos (los demás quedan guardados en el celular)
     const faltan = enlaces.filter(u => !smnCache[u]);
     if (faltan.length > 10) el.textContent = `Revisando ${faltan.length} avisos del SMN…`;
-    let i = 0;
+    // de a 2 y con pausa: si se le piden muchos juntos, el SMN corta (error 429). Lo que falte se baja en la próxima vuelta.
+    let i = 0, frenos = 0, hechos = 0;
     const trabajar = async () => {
-      while (i < faltan.length) {
+      while (i < faltan.length && frenos < 3) {
         const u = faltan[i++];
-        try { const d = await fetch(PROXY + "/smn?u=" + encodeURIComponent(u)); if (d.ok) smnCache[u] = leerCap(await d.text()); } catch (e) { /* se reintenta la próxima */ }
+        try {
+          const d = await fetch(PROXY + "/smn?u=" + encodeURIComponent(u));
+          if (d.ok) { smnCache[u] = leerCap(await d.text()); hechos++; }
+          else if (d.status === 502 || d.status === 429) { frenos++; await new Promise(r => setTimeout(r, 3000)); }
+        } catch (e) { /* se reintenta la próxima */ }
+        if (hechos % 10 === 0) guardarLocal("miClimaSmn", smnCache);
+        await new Promise(r => setTimeout(r, 350));
       }
     };
-    await Promise.all([1, 2, 3, 4, 5, 6].map(trabajar));
+    await Promise.all([1, 2].map(trabajar));
+    smnPendientes = faltan.filter(u => !smnCache[u]).length;
+    if (smnPendientes) setTimeout(() => cargarSmn(), 3 * 60000);
     for (const u of Object.keys(smnCache)) if (!enlaces.includes(u)) delete smnCache[u];
     guardarLocal("miClimaSmn", smnCache);
     dibujarSmn();
@@ -2318,6 +2327,7 @@ function dibujarSmn(soloGuardados) {
     guardarLocal("miClimaSmnAvisados", [...smnAvisados].slice(-60));
   }
   const pie = document.createElement("div"); pie.className = "small";
+  if (smnPendientes) { const f = document.createElement("div"); f.className = "small"; f.textContent = `Todavía faltan revisar ${smnPendientes} avisos del SMN (el SMN deja bajarlos de a poco). Se completan solos en unos minutos.`; el.appendChild(f); }
   pie.innerHTML = 'Fuente: Servicio Meteorológico Nacional (avisos oficiales). Ver en <a href="https://www.smn.gob.ar/alertas" target="_blank" rel="noopener">smn.gob.ar/alertas</a>.';
   el.appendChild(pie);
 }
