@@ -179,7 +179,7 @@ nav.tabs button{font-size:11px}
   <div class="panel" id="estado" data-nivel="gris">
     <p class="estadoTitulo">Revisando el radar…</p>
     <div class="estadoDetalle"></div>
-    <div class="botones"><button class="sec chico" type="button" data-ir="radar">🛰️ Ver radar</button><button class="sec chico" type="button" data-ir="alarma">🔔 Alarma</button><button class="sec chico" type="button" id="btnEscuchar">🔊 Escuchar</button><button class="sec chico" type="button" id="btnReportar">📣 ¿Qué cae acá?</button></div>
+    <div class="botones"><button class="sec chico" type="button" data-ir="radar">🛰️ Ver radar</button><button class="sec chico" type="button" data-ir="alarma">🔔 Alarma</button><button class="sec chico" type="button" id="btnVerTormentas">⛈️ Tormentas de la tarde y noche</button><button class="sec chico" type="button" id="btnEscuchar">🔊 Escuchar</button><button class="sec chico" type="button" id="btnReportar">📣 ¿Qué cae acá?</button></div>
   </div>
 
   <div class="panel" id="panelLlegada" style="display:none">
@@ -223,6 +223,7 @@ nav.tabs button{font-size:11px}
       <button id="chipSat" class="chip" type="button" aria-pressed="false">🛰️ Satélite</button>
       <button id="chipNubes" class="chip" type="button" aria-pressed="false">☁️ Nubes</button>
       <button id="chipViento" class="chip" type="button" aria-pressed="false">💨 Viento</button>
+      <button id="chipTormentas" class="chip" type="button" aria-pressed="false">⛈️ Tormentas (pronóstico)</button>
       <button id="chipSatLluvia" class="chip" type="button" aria-pressed="false">🌧️ Lluvia satélite</button>
       <button id="chipBrujula" class="chip" type="button" aria-pressed="false">🧭 Hacia dónde miro</button>
     </div>
@@ -249,6 +250,21 @@ nav.tabs button{font-size:11px}
       <div class="escala" id="escalaViento"></div>
       <div class="escalaNum"><span>0</span><span>20</span><span>40</span><span>60</span><span>80</span><span>100+ km/h</span></div>
       <div id="vientoInfo" class="small"></div>
+    </div>
+    <div id="panelTormentas" style="display:none">
+      <div class="capaTitulo">⛈️ Tormentas pronosticadas</div>
+      <div class="seg" id="segTormentas" role="group" aria-label="Momento del pronóstico" style="flex-wrap:wrap">
+        <button type="button" data-v="tarde">Esta tarde</button>
+        <button type="button" data-v="0-3" class="on">Próx. 3 h</button>
+        <button type="button" data-v="3-6">3 a 6 h</button>
+        <button type="button" data-v="6-12">6 a 12 h</button>
+        <button type="button" data-v="noche">Esta noche</button>
+        <button type="button" data-v="manana">Mañana</button>
+      </div>
+      <div class="escala" style="background:linear-gradient(90deg,rgba(66,165,245,.55) 0 25%,#1565c0 25% 50%,#ff9800 50% 75%,#c62828 75% 100%)"></div>
+      <div class="escalaNum"><span>Lluvia</span><span>Lluvia fuerte</span><span>Tormenta</span><span>Tormenta fuerte / granizo</span></div>
+      <div id="tormentasResumen" class="small" style="color:var(--text);font-size:14px"></div>
+      <div id="tormentasInfo" class="small"></div>
     </div>
     <div id="panelSatLluvia" style="display:none">
       <div class="capaTitulo">🌧️ Lluvia estimada por satélite (todo el país)</div>
@@ -482,7 +498,7 @@ function mostrarTab(nombre) {
   tabActual = nombre;
   document.querySelectorAll(".tab").forEach(s => s.classList.toggle("activa", s.id === "tab-" + nombre));
   document.querySelectorAll("nav.tabs button").forEach(b => b.classList.toggle("on", b.dataset.tab === nombre));
-  if (nombre === "radar" && map) setTimeout(() => { map.invalidateSize(); if (vientoOn) programarViento(100); }, 50);
+  if (nombre === "radar" && map) setTimeout(() => { map.invalidateSize(); if (vientoOn) programarViento(100); if (tormOn) programarTormentas(100); }, 50);
   if (nombre === "viaje") iniciarViaje();
   window.scrollTo(0, 0);
 }
@@ -1857,6 +1873,125 @@ function lluviaSatEn(lat, lon) {
   return datos[k + 3] > 20 ? mmDeColor(datos[k], datos[k + 1], datos[k + 2]) : 0;
 }
 
+// ---- Tormentas pronosticadas en toda la zona (Open-Meteo, grilla sobre el mapa) ----
+// Para cada punto de una grilla de 12 x 12 sobre lo que se ve en el mapa, mira el pronóstico hora por hora y se queda
+// con lo peor dentro de la franja elegida: lluvia, lluvia fuerte, tormenta o tormenta fuerte con posible granizo.
+const TORM_PUNTOS = 12, TORM_VIDA_MS = 30 * 60000;
+const TORM_COLORES = [null, [66, 165, 245, 120], [21, 101, 192, 170], [255, 152, 0, 185], [198, 40, 40, 200]];
+const TORM_TEXTOS = ["sin lluvia", "lluvia", "lluvia fuerte", "tormenta", "tormenta fuerte con posible granizo"];
+let tormOn = leerLocal("miClimaTormentas") === true, tormVentana = "0-3", tormGrillas = [], tormActual = null, capaTorm = null, tormPedido = 0, tormTimer = null, tormUltimo = 0, tormCampo = null;
+function nivelHora(cod, prec, cape) {
+  if (cod >= 96) return 4;
+  if (cod === 95) return (cape >= 1500 || prec >= 10) ? 4 : 3;
+  if (prec >= 5) return 2;
+  if (prec >= 0.5 || (cod >= 61 && cod <= 67) || (cod >= 80 && cod <= 82)) return 1;
+  return 0;
+}
+// Franja de horas (en milisegundos) según el botón elegido
+function franjaTormentas(v) {
+  const ahora = Date.now(), hoy = new Date();
+  if (v === "tarde") {
+    const fin = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate(), 20).getTime();
+    if (fin - ahora > 3600000) return [ahora, fin, "esta tarde (hasta las 20)"];
+    v = "noche";
+  }
+  if (v === "noche") {
+    let ini = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate(), 20).getTime();
+    if (hoy.getHours() < 6) ini = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate() - 1, 20).getTime();
+    return [Math.max(ahora, ini), ini + 10 * 3600000, "esta noche (20 a 6 h)"];
+  }
+  if (v === "manana") { const ini = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate() + 1, 6).getTime(); return [ini, ini + 14 * 3600000, "mañana de día (6 a 20 h)"]; }
+  const [a, b] = v.split("-").map(Number);
+  return [ahora + a * 3600000, ahora + b * 3600000, a === 0 ? `las próximas ${b} horas` : `dentro de ${a} a ${b} horas`];
+}
+function programarTormentas(ms) { clearTimeout(tormTimer); tormTimer = setTimeout(cargarTormentas, ms === undefined ? 1200 : ms); }
+async function cargarTormentas() {
+  if (!tormOn || !map || tabActual !== "radar") return;
+  const b = map.getBounds(), el = $("tormentasInfo");
+  const sirve = tormGrillas.find(g => Date.now() - g.t < TORM_VIDA_MS && g.sur <= b.getSouth() && g.norte >= b.getNorth() && g.oeste <= b.getWest() && g.este >= b.getEast() && (g.este - g.oeste) <= 3.5 * (b.getEast() - b.getWest()));
+  if (sirve) { usarTormentas(sirve); return; }
+  const espera = 4000 - (Date.now() - tormUltimo);
+  if (espera > 0) { programarTormentas(espera); return; }
+  tormUltimo = Date.now();
+  const yo = ++tormPedido, n = TORM_PUNTOS;
+  if (!tormActual) el.textContent = "Cargando el pronóstico de tormentas…";
+  try {
+    const amp = b.pad(0.3), cLat = (amp.getNorth() + amp.getSouth()) / 2, cLon = (amp.getEast() + amp.getWest()) / 2;
+    const alto = Math.max(amp.getNorth() - amp.getSouth(), 0.1 * (n - 1)), ancho = Math.max(amp.getEast() - amp.getWest(), 0.1 * (n - 1));
+    const sur = cLat - alto / 2, norte = cLat + alto / 2, oeste = cLon - ancho / 2, este = cLon + ancho / 2;
+    const dlat = (norte - sur) / (n - 1), dlon = (este - oeste) / (n - 1), lats = [], lons = [];
+    for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) { lats.push((sur + j * dlat).toFixed(2)); lons.push((oeste + i * dlon).toFixed(2)); }
+    const r = await fetch("https://api.open-meteo.com/v1/forecast" + `?latitude=${lats.join(",")}&longitude=${lons.join(",")}` +
+      "&hourly=weather_code,precipitation,precipitation_probability,cape,wind_gusts_10m&forecast_hours=48&timezone=GMT");
+    if (r.status === 429) throw new Error("Open-Meteo está limitando las consultas, probá en un rato");
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    const datos = await r.json(), lista = Array.isArray(datos) ? datos : [datos];
+    if (lista.length !== n * n || !lista[0].hourly) throw new Error("datos incompletos");
+    const g = { t: Date.now(), sur, norte, oeste, este, dlat, dlon, n, horas: lista[0].hourly.time.map(x => Date.parse(x + "Z")), pts: lista.map(p => p.hourly) };
+    tormGrillas = [g, ...tormGrillas.filter(x => Date.now() - x.t < TORM_VIDA_MS)].slice(0, 4);
+    if (yo === tormPedido && tormOn) usarTormentas(g);
+  } catch (e) {
+    if (yo === tormPedido) el.textContent = "No pude cargar el pronóstico de tormentas: " + e.message + (tormActual ? ". Sigo mostrando el último que tenía." : ".");
+  }
+}
+function usarTormentas(g) {
+  tormActual = g;
+  const [ini, fin, nombre] = franjaTormentas(tormVentana), n = g.n;
+  const horas = g.horas.map((t, i) => [t, i]).filter(([t]) => t + 3600000 > ini && t < fin).map(([, i]) => i);
+  const celdas = g.pts.map(h => {
+    let nivel = 0, cuando = null, prec = 0, prob = 0, raf = 0;
+    for (const i of horas) {
+      const nv = nivelHora(h.weather_code[i], h.precipitation[i] || 0, h.cape ? h.cape[i] || 0 : 0);
+      if (nv > nivel) { nivel = nv; cuando = g.horas[i]; }
+      prec = Math.max(prec, h.precipitation[i] || 0); prob = Math.max(prob, h.precipitation_probability ? h.precipitation_probability[i] || 0 : 0); raf = Math.max(raf, h.wind_gusts_10m[i] || 0);
+    }
+    return { nivel, cuando, prec, prob, raf };
+  });
+  tormCampo = { g, celdas, nombre, ini, fin };
+  // imagen suave: un punto por celda, agrandada con suavizado
+  const c = document.createElement("canvas"); c.width = n; c.height = n;
+  const ctx = c.getContext("2d"), img = ctx.createImageData(n, n);
+  celdas.forEach((x, k) => {
+    const col = TORM_COLORES[x.nivel]; if (!col) return;
+    const i = k % n, j = (k - i) / n, p = ((n - 1 - j) * n + i) * 4;   // la fila 0 de la imagen es el norte
+    img.data[p] = col[0]; img.data[p + 1] = col[1]; img.data[p + 2] = col[2]; img.data[p + 3] = col[3];
+  });
+  ctx.putImageData(img, 0, 0);
+  const grande = document.createElement("canvas"); grande.width = grande.height = n * 16;
+  const gctx = grande.getContext("2d"); gctx.imageSmoothingEnabled = true; gctx.imageSmoothingQuality = "high";
+  gctx.drawImage(c, 0, 0, n * 16, n * 16);
+  const limites = [[g.sur - g.dlat / 2, g.oeste - g.dlon / 2], [g.norte + g.dlat / 2, g.este + g.dlon / 2]];
+  if (capaTorm) map.removeLayer(capaTorm);
+  capaTorm = L.imageOverlay(grande.toDataURL(), limites, { opacity: 0.85, zIndex: 370, interactive: false }).addTo(map);
+  // resumen: lo más cercano a vos y lo peor en la zona
+  let cerca = null, peor = 0;
+  celdas.forEach((x, k) => {
+    if (x.nivel > peor) peor = x.nivel;
+    if (x.nivel < 3) return;
+    const i = k % n, j = (k - i) / n, la = g.sur + j * g.dlat, lo = g.oeste + i * g.dlon, d = kmEntre(pos.lat, pos.lon, la, lo);
+    if (!cerca || d < cerca.d) cerca = { d, x, rumbo: rumboHacia(pos.lat, pos.lon, la, lo) };
+  });
+  const res = $("tormentasResumen");
+  if (!horas.length) res.textContent = "Esa franja queda fuera del pronóstico disponible.";
+  else if (peor < 3) res.textContent = peor ? `Para ${nombre}: sin tormentas en la zona del mapa, solo ${TORM_TEXTOS[peor]} en algunos sectores.` : `Para ${nombre}: sin lluvia ni tormentas en la zona del mapa.`;
+  else res.textContent = `Para ${nombre}: ${TORM_TEXTOS[peor]} en algunos sectores. ` +
+    (cerca.d < 8 ? `Te toca a vos (a eso de las ${horaLocal(cerca.x.cuando)}).` : `La más cercana a vos: a ${km(cerca.d)} km al ${direccion(cerca.rumbo)}, a eso de las ${horaLocal(cerca.x.cuando)}.`);
+  $("tormentasInfo").textContent = "Pronóstico de los modelos (Open-Meteo) en una grilla sobre lo que ves en el mapa: marca dónde es más probable que se armen tormentas, no el lugar exacto. Tocá el mapa para ver el detalle de un punto. Para lo que pasa ahora, mirá el radar.";
+}
+function tocarMapaTormentas(e) {
+  if (!tormOn || !tormCampo) return;
+  const { g, celdas, nombre } = tormCampo;
+  const i = Math.round((e.latlng.lng - g.oeste) / g.dlon), j = Math.round((e.latlng.lat - g.sur) / g.dlat);
+  if (i < 0 || j < 0 || i >= g.n || j >= g.n) return;
+  const x = celdas[j * g.n + i];
+  L.popup().setLatLng(e.latlng).setContent(`⛈️ <b>${TORM_TEXTOS[x.nivel].replace(/^./, c => c.toUpperCase())}</b> (${nombre})` +
+    (x.nivel ? `<br>Lo peor a eso de las ${horaLocal(x.cuando)}` : "") + `<br>Lluvia: hasta ${x.prec.toFixed(1).replace(".", ",")} mm/h · probabilidad ${r0(x.prob)}%<br>Ráfagas: hasta ${r0(x.raf)} km/h`).openOn(map);
+}
+function aplicarTormentas() {
+  if (tormOn) cargarTormentas();
+  else { if (capaTorm) { map.removeLayer(capaTorm); capaTorm = null; } $("tormentasResumen").textContent = ""; map.closePopup(); }
+}
+
 // ---- Botones de capas ----
 function aplicarFondo() {
   if (fondoSat) { map.removeLayer(capaCalles); capaSat.addTo(map); capaNombres.addTo(map); }
@@ -1878,8 +2013,10 @@ function aplicarViento() {
   }
 }
 function marcarCapas() {
-  for (const [id, on] of [["chipSat", fondoSat], ["chipNubes", nubesOn], ["chipViento", vientoOn], ["chipSatLluvia", satLluviaOn]]) { $(id).classList.toggle("on", on); $(id).setAttribute("aria-pressed", String(on)); }
-  $("panelCapas").style.display = nubesOn || vientoOn || satLluviaOn ? "" : "none";
+  for (const [id, on] of [["chipSat", fondoSat], ["chipNubes", nubesOn], ["chipViento", vientoOn], ["chipSatLluvia", satLluviaOn], ["chipTormentas", tormOn]]) { $(id).classList.toggle("on", on); $(id).setAttribute("aria-pressed", String(on)); }
+  $("panelCapas").style.display = nubesOn || vientoOn || satLluviaOn || tormOn ? "" : "none";
+  $("panelTormentas").style.display = tormOn ? "" : "none";
+  document.querySelectorAll("#segTormentas button").forEach(b => b.classList.toggle("on", b.dataset.v === tormVentana));
   $("panelSatLluvia").style.display = satLluviaOn ? "" : "none";
   $("panelViento").style.display = vientoOn ? "" : "none";
   $("panelNubes").style.display = nubesOn ? "" : "none";
@@ -1899,6 +2036,11 @@ function iniciarCapas() {
   $("chipNubes").addEventListener("click", () => { nubesOn = !nubesOn; guardarLocal("miClimaNubes", nubesOn); aplicarNubes(false); marcarCapas(); });
   $("escalaSatLluvia").style.background = "linear-gradient(90deg," + PALETA_SAT.filter((x, i) => i % 2 === 0 || i > 10).map(([c]) => `rgb(${c.join(",")})`).join(",") + ")";
   $("chipSatLluvia").addEventListener("click", () => prenderSatLluvia(!satLluviaOn, false));
+  $("chipTormentas").addEventListener("click", () => { tormOn = !tormOn; guardarLocal("miClimaTormentas", tormOn); aplicarTormentas(); marcarCapas(); });
+  document.querySelectorAll("#segTormentas button").forEach(b => b.addEventListener("click", () => { tormVentana = b.dataset.v; marcarCapas(); if (tormActual) usarTormentas(tormActual); else cargarTormentas(); }));
+  map.on("moveend", () => { if (tormOn) programarTormentas(); });
+  map.on("click", tocarMapaTormentas);
+  if (tormOn) setTimeout(() => aplicarTormentas(), 0);
   if (satLluviaOn) actualizarSatLluvia();
   $("chipViento").addEventListener("click", () => { vientoOn = !vientoOn; guardarLocal("miClimaViento", vientoOn); aplicarViento(); marcarCapas(); });
   document.querySelectorAll("#segNubes button").forEach(b => b.addEventListener("click", () => {
@@ -2685,6 +2827,13 @@ async function cargarPasos() {
 
 // ---- Eventos de las funciones nuevas ----
 $("chipBrujula").addEventListener("click", activarBrujula);
+$("btnVerTormentas").addEventListener("click", () => {
+  if (!tormOn) { tormOn = true; guardarLocal("miClimaTormentas", true); }
+  const h = new Date().getHours(); tormVentana = h >= 19 || h < 6 ? "noche" : "tarde";
+  marcarCapas(); mostrarTab("radar");
+  const l = lugarActual(); map.setView([l.lat, l.lon], 7);
+  tormActual = null; setTimeout(() => { aplicarTormentas(); }, 150);
+});
 $("btnEscuchar").addEventListener("click", () => hablar(textoEstadoParaLeer(), true));
 $("btnReportar").addEventListener("click", abrirReporte);
 $("cerrarReporte").addEventListener("click", cerrarReporte);
