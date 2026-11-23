@@ -147,9 +147,12 @@ nav.tabs button.on{color:var(--accent);font-weight:700}
 .campo select option{color:#1d2630}
 .atajos{display:flex;gap:6px;overflow-x:auto;margin-top:8px;padding-bottom:4px}
 .atajos button{flex:0 0 auto;padding:6px 10px;font-size:13px}
-#mapViaje{height:300px;width:100%;border-radius:12px;margin-top:10px}
+#mapViaje{height:340px;width:100%;border-radius:12px;margin-top:10px}
 .tramo{display:grid;grid-template-columns:12px 1fr;gap:8px;padding:8px 0;border-bottom:1px solid var(--border);font-size:14px;line-height:1.35}
 .tramo:last-child{border-bottom:0}
+.tramo{cursor:pointer;border-radius:8px}
+.tramo:active,.tramo.marcado{background:rgba(66,133,244,.12)}
+.tramo .ver{color:var(--accent);font-size:12px;margin-top:2px}
 .tramo .punto{margin-top:5px}
 .tramo .q{color:var(--muted);font-size:13px}
 .salidas{display:flex;gap:6px;overflow-x:auto;margin-top:8px;padding-bottom:4px}
@@ -2736,10 +2739,11 @@ function dibujarViaje(salida) {
     const peorTramo = ORDEN[res[k].nivel] >= ORDEN[res[k + 1].nivel] ? res[k].nivel : res[k + 1].nivel;
     L.polyline(v.coords.slice(a, b + 1), { color: colores[peorTramo], weight: 6, opacity: 0.9 }).addTo(capaViaje);
   }
+  const marcadores = [];
   for (const x of res) {
     const t = tiempo(x.cod, x.esDia);
-    L.circleMarker([x.m.lat, x.m.lon], { radius: 5, color: "#fff", weight: 1.5, fillColor: colores[x.nivel], fillOpacity: 1 })
-      .bindPopup(`<b>${horaLocal(x.llega)}</b> · km ${Math.round(x.m.km)}${x.m.ruta ? " · " + x.m.ruta : ""}<br>${t.icono} ${t.texto}, ${r0(x.temp)}°, ráfagas ${r0(x.raf)} km/h` + (x.problemas.length ? `<br><b>${x.problemas.join(", ")}</b>` : "")).addTo(capaViaje);
+    marcadores.push(L.circleMarker([x.m.lat, x.m.lon], { radius: 5, color: "#fff", weight: 1.5, fillColor: colores[x.nivel], fillOpacity: 1 })
+      .bindPopup(`<b>${horaLocal(x.llega)}</b> · km ${Math.round(x.m.km)}${x.m.ruta ? " · " + x.m.ruta : ""}<br>${t.icono} ${t.texto}, ${r0(x.temp)}°, ráfagas ${r0(x.raf)} km/h` + (x.problemas.length ? `<br><b>${x.problemas.join(", ")}</b>` : ""), { maxWidth: 230, autoPanPaddingTopLeft: [56, 12], autoPanPaddingBottomRight: [12, 12] }).addTo(capaViaje));
   }
   L.circleMarker(v.coords[0], { radius: 8, color: "#fff", weight: 2, fillColor: "#1565c0", fillOpacity: 1 }).bindTooltip("Salida").addTo(capaViaje);
   L.circleMarker(v.coords[v.coords.length - 1], { radius: 8, color: "#fff", weight: 2, fillColor: "#c62828", fillOpacity: 1 }).bindTooltip("Destino").addTo(capaViaje);
@@ -2783,15 +2787,27 @@ function dibujarViaje(salida) {
   // detalle punto por punto
   const tramos = $("viajeTramos");
   tramos.textContent = "";
-  for (const x of res) {
+  res.forEach((x, k) => {
     const t = tiempo(x.cod, x.esDia);
     const div = document.createElement("div"); div.className = "tramo";
-    div.innerHTML = '<span class="punto"></span><div><div class="a"></div><div class="q"></div></div>';
+    div.setAttribute("role", "button"); div.tabIndex = 0;
+    div.innerHTML = '<span class="punto"></span><div><div class="a"></div><div class="q"></div><div class="ver">📍 Ver en el mapa</div></div>';
+    // al tocar la fila: sube al mapa, va a ese punto del camino y muestra el detalle
+    div.addEventListener("click", () => {
+      tramos.querySelectorAll(".tramo.marcado").forEach(e => e.classList.remove("marcado"));
+      div.classList.add("marcado");
+      $("mapViaje").scrollIntoView({ behavior: "smooth", block: "center" });
+      const mk = marcadores[k];
+      mapViaje.setView(mk.getLatLng(), Math.max(mapViaje.getZoom(), 11));
+      if (v.resaltado) capaViaje.removeLayer(v.resaltado);
+      v.resaltado = L.circleMarker(mk.getLatLng(), { radius: 14, color: "#1a73e8", weight: 3, fill: false, interactive: false }).addTo(capaViaje);
+      setTimeout(() => mk.openPopup(), 350);
+    });
     div.querySelector(".punto").style.background = colores[x.nivel];
     div.querySelector(".a").textContent = `${horaLocal(x.llega)} · km ${Math.round(x.m.km)}${x.m.ruta ? " · " + x.m.ruta : ""} — ${t.icono} ${r0(x.temp)}°, ráfagas ${r0(x.raf)} km/h`;
     div.querySelector(".q").textContent = x.problemas.length ? x.problemas.join(", ") : t.texto;
     tramos.appendChild(div);
-  }
+  });
   v.textoVoz = `${titulo}. ${detalle}`;
 }
 // Pasos a Chile: pronóstico de alta montaña (Open-Meteo) y enlaces al estado oficial
