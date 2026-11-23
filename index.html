@@ -99,6 +99,11 @@ nav.tabs button.on{color:var(--accent);font-weight:700}
 .chips{position:absolute;top:10px;right:10px;z-index:1001;display:flex;flex-direction:column;gap:6px;align-items:flex-end}
 .chip{background:rgba(255,255,255,.93);color:#1d2630;border:1px solid rgba(0,0,0,.25);border-radius:18px;padding:7px 11px;font-size:13px;font-weight:600;box-shadow:0 1px 4px rgba(0,0,0,.35)}
 .chip.on{background:#1565c0;color:#fff;border-color:#1565c0}
+.btnUbic{position:absolute;right:12px;bottom:34px;z-index:1001;width:54px;height:54px;border-radius:16px;padding:0;background:#fff;border:1px solid rgba(0,0,0,.2);box-shadow:0 2px 6px rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center}
+.btnUbic span{display:block;width:30px;height:30px;border-radius:50%;background:#e3ecfd;position:relative}
+.btnUbic span::after{content:"";position:absolute;left:8px;top:8px;width:14px;height:14px;border-radius:50%;background:#1a73e8}
+.btnUbic.buscando span::after{animation:ubicLatido 1s ease-in-out infinite}
+@keyframes ubicLatido{50%{transform:scale(.55);opacity:.5}}
 .capaTitulo{font-weight:600;margin-bottom:8px}
 #panelViento .seg button,#panelNubes .seg button{padding:8px 4px;font-size:13px}
 #panelViento + #panelSatLluvia,#panelSatLluvia + #panelNubes,#panelViento + #panelNubes{margin-top:16px}
@@ -227,6 +232,7 @@ nav.tabs button{font-size:11px}
       <button id="chipSatLluvia" class="chip" type="button" aria-pressed="false">🌧️ Lluvia satélite</button>
       <button id="chipBrujula" class="chip" type="button" aria-pressed="false">🧭 Hacia dónde miro</button>
     </div>
+    <button id="btnUbic" class="btnUbic" type="button" aria-label="Ir a mi ubicación"><span></span></button>
   </div>
   <div class="panel" id="panelBrujula" style="display:none">
     <div class="capaTitulo" id="brujulaTitulo">🧭 Apuntá el celular hacia las nubes</div>
@@ -2827,6 +2833,23 @@ async function cargarPasos() {
 
 // ---- Eventos de las funciones nuevas ----
 $("chipBrujula").addEventListener("click", activarBrujula);
+// Botón "mi ubicación" (el punto azul de abajo a la derecha, como en Google Maps)
+$("btnUbic").addEventListener("click", () => {
+  const btn = $("btnUbic");
+  map.setView([pos.lat, pos.lon], Math.max(map.getZoom(), 11));   // primero a la última ubicación conocida
+  if (!navigator.geolocation) return;
+  btn.classList.add("buscando");
+  navigator.geolocation.getCurrentPosition(p => {
+    btn.classList.remove("buscando");
+    pos = { lat: p.coords.latitude, lon: p.coords.longitude };
+    guardarUbicacion(); ponerMarcador(); if (brujulaOn) dibujarCono();
+    map.setView([pos.lat, pos.lon], Math.max(map.getZoom(), 11));
+    evaluarAlarma(); enviarUbicacionAvisos();
+  }, e => {
+    btn.classList.remove("buscando");
+    $("radarInfo").textContent = "No pude leer tu ubicación (" + e.message + "). Revisá que el GPS esté prendido y que la app tenga permiso de ubicación.";
+  }, { enableHighAccuracy: true, timeout: 20000, maximumAge: 10000 });
+});
 $("btnVerTormentas").addEventListener("click", () => {
   if (!tormOn) { tormOn = true; guardarLocal("miClimaTormentas", true); }
   const h = new Date().getHours(); tormVentana = h >= 19 || h < 6 ? "noche" : "tarde";
