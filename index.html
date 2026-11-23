@@ -101,7 +101,7 @@ nav.tabs button.on{color:var(--accent);font-weight:700}
 .chip.on{background:#1565c0;color:#fff;border-color:#1565c0}
 .capaTitulo{font-weight:600;margin-bottom:8px}
 #panelViento .seg button,#panelNubes .seg button{padding:8px 4px;font-size:13px}
-#panelViento + #panelNubes{margin-top:16px}
+#panelViento + #panelSatLluvia,#panelSatLluvia + #panelNubes,#panelViento + #panelNubes{margin-top:16px}
 .escala{height:12px;border-radius:6px;margin-top:4px}
 .escalaNum{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-top:2px}
 .mapaCaja.destello::after{content:"";position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none;z-index:1002;animation:mapaDestello .5s ease-out}
@@ -223,6 +223,7 @@ nav.tabs button{font-size:11px}
       <button id="chipSat" class="chip" type="button" aria-pressed="false">🛰️ Satélite</button>
       <button id="chipNubes" class="chip" type="button" aria-pressed="false">☁️ Nubes</button>
       <button id="chipViento" class="chip" type="button" aria-pressed="false">💨 Viento</button>
+      <button id="chipSatLluvia" class="chip" type="button" aria-pressed="false">🌧️ Lluvia satélite</button>
       <button id="chipBrujula" class="chip" type="button" aria-pressed="false">🧭 Hacia dónde miro</button>
     </div>
   </div>
@@ -248,6 +249,12 @@ nav.tabs button{font-size:11px}
       <div class="escala" id="escalaViento"></div>
       <div class="escalaNum"><span>0</span><span>20</span><span>40</span><span>60</span><span>80</span><span>100+ km/h</span></div>
       <div id="vientoInfo" class="small"></div>
+    </div>
+    <div id="panelSatLluvia" style="display:none">
+      <div class="capaTitulo">🌧️ Lluvia estimada por satélite (todo el país)</div>
+      <div class="escala" id="escalaSatLluvia"></div>
+      <div class="escalaNum"><span>0,5</span><span>3</span><span>10</span><span>20</span><span>40</span><span>55+ mm/h</span></div>
+      <div id="satLluviaInfo" class="small"></div>
     </div>
     <div id="panelNubes" style="display:none">
       <div class="capaTitulo">☁️ Nubes (satélite GOES-East)</div>
@@ -762,10 +769,11 @@ function ajustarRadarAlLugar(centrar) {
   const nota = $("notaZona");
   if (!dentro) {
     nota.style.display = "";
-    nota.innerHTML = 'En esta zona no llega el radar de Mendoza: se muestra RainViewer (puede tener poca cobertura). Mirá también el <a href="https://www.smn.gob.ar/radar" target="_blank" rel="noopener">radar oficial del SMN</a>' + (l.lat < -50 ? " (el de Río Grande es el RMA9)." : ".");
-    if (fuente === "mza") { radarAuto = true; verRainViewer(); }
+    nota.innerHTML = 'En esta zona no llega el radar de Mendoza: se muestra la <b>lluvia estimada por satélite</b> (NOAA, con unos 40 minutos de atraso). Mirá también el <a href="https://www.smn.gob.ar/radar" target="_blank" rel="noopener">radar oficial del SMN</a>' + (l.lat < -50 ? " (el de Río Grande es el RMA9)." : ".");
+    if (!satLluviaOn) prenderSatLluvia(true, true);
   } else {
     nota.style.display = "none";
+    if (satLluviaAuto) prenderSatLluvia(false, true);
     if (fuente === "rv" && radarAuto) { radarAuto = false; verMendoza(false); }
   }
 }
@@ -1471,6 +1479,7 @@ function actualizarInfo() {
   const edadMin = Math.max(0, Math.round((Date.now() - tiempoDe(lista.length - 1)) / 60000));
   const futuro = fuente === "rv" && rvFrames[idx].futuro ? " (pronóstico de radar)" : "";
   info.textContent = `${nombre} ${horaLocal(tiempoDe(idx))}${futuro} · imagen ${idx + 1} de ${lista.length} · la última es de hace ${edadMin} min`;
+  if (fuente === "rv") avisoRadar("Ojo: RainViewer hoy casi no tiene datos de Argentina (puede mostrar todo limpio aunque llueva). Usá el radar de Mendoza o 🌧️ Lluvia satélite.");
   if (edadMin > ATRASADO_MIN) avisoRadar(`⚠ El radar está atrasado: no hay imágenes nuevas hace ${edadMin} minutos.`);
 }
 function avisoRadar(m) { const w = document.createElement("div"); w.className = "warn"; w.textContent = m; info.appendChild(w); }
@@ -1480,7 +1489,7 @@ async function verMendoza(permitirCambio) {
   try { await actualizarMendoza(); } catch (e) { info.textContent = "Error al buscar el radar de Mendoza: " + e.message; return; }
   if (fuente !== "mza") return;
   if (!mzaFrames.length) {
-    if (permitirCambio) { await verRainViewer(); avisoRadar("El radar de Mendoza no tiene imágenes de los últimos 40 minutos, por eso muestro RainViewer."); }
+    if (permitirCambio) { info.textContent = ""; avisoRadar("El radar de Mendoza no tiene imágenes de los últimos 40 minutos: prendí la lluvia estimada por satélite."); if (!satLluviaOn) prenderSatLluvia(true, true); }
     else { info.textContent = ""; avisoRadar("El radar de Mendoza no tiene imágenes de los últimos 40 minutos. Probá más tarde o usá RainViewer."); }
     evaluarAlarma();
     return;
@@ -1779,6 +1788,75 @@ function tocarMapaViento(e) {
   L.popup().setLatLng(e.latlng).setContent(`💨 <b>${r0(w.medio)} km/h</b> del ${direccion(dir)}<br>Ráfagas: ${r0(w.raf)} km/h<br><span style="color:#5b6876">Pronóstico para las ${horaLocal(vientoCampo.hora)}</span>`).openOn(map);
 }
 
+// ---- Lluvia estimada por satélite (NOAA Hydro-Estimator, servida por SSEC RealEarth) ----
+// Cubre todo el país (y Chile): la ve el satélite GOES-19 desde arriba, así que la cordillera no la tapa.
+// Es menos precisa que un radar y llega con ~40 minutos de atraso. Reemplaza a RainViewer, que hoy no tiene datos de Argentina.
+const SAT_LLUVIA = { base: "https://realearth.ssec.wisc.edu", prod: "NESDIS-GHE-HourlyRainfall" };
+const PALETA_SAT = [[[0, 200, 255], 0.5], [[0, 187, 255], 0.7], [[0, 163, 255], 0.9], [[0, 136, 255], 1.2], [[0, 82, 255], 1.5], [[0, 0, 200], 2.5], [[150, 255, 150], 3.5],
+  [[50, 200, 50], 5], [[0, 130, 0], 7.5], [[255, 255, 0], 11], [[170, 170, 0], 15], [[255, 127, 0], 19], [[200, 70, 70], 22], [[255, 160, 160], 30], [[255, 0, 0], 37], [[157, 0, 157], 45], [[0, 0, 0], 56]];
+let satLluviaOn = leerLocal("miClimaSatLluvia") === true, satLluviaAuto = false, capaSatLluvia = null, satLluviaHora = null, satLluviaClave = null, pedidoSatLluvia = 0;
+const satTeselas = new Map();   // "z/x/y@hora" -> { datos, listo }
+function mmDeColor(r, g, b) {
+  let mejor = null, dist = Infinity;
+  for (const [c, v] of PALETA_SAT) { const d = (c[0] - r) ** 2 + (c[1] - g) ** 2 + (c[2] - b) ** 2; if (d < dist) { dist = d; mejor = v; } }
+  return dist < 9000 ? mejor : 0;
+}
+function textoMm(v) { return v >= 20 ? "lluvia muy fuerte o tormenta" : v >= 7.5 ? "lluvia fuerte" : v >= 2.5 ? "lluvia moderada" : "lluvia débil"; }
+async function actualizarSatLluvia(forzar) {
+  if (!map) return;
+  if (!satLluviaOn) { if (capaSatLluvia) { map.removeLayer(capaSatLluvia); capaSatLluvia = null; } return; }
+  const yo = ++pedidoSatLluvia, el = $("satLluviaInfo");
+  try {
+    const r = await fetch(`${SAT_LLUVIA.base}/api/products?products=${SAT_LLUVIA.prod}`, { cache: "no-store" });
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    const tiempos = ((await r.json())[0] || {}).times || [];
+    if (!tiempos.length) throw new Error("no hay imágenes");
+    const clave = tiempos[tiempos.length - 1], [d, h] = clave.split(".");
+    if (yo !== pedidoSatLluvia || !satLluviaOn) return;
+    satLluviaHora = Date.UTC(+d.slice(0, 4), +d.slice(4, 6) - 1, +d.slice(6, 8), +h.slice(0, 2), +h.slice(2, 4));
+    if (!capaSatLluvia || forzar || clave !== satLluviaClave) {
+      satLluviaClave = clave;
+      if (capaSatLluvia) map.removeLayer(capaSatLluvia);
+      capaSatLluvia = L.tileLayer(`${SAT_LLUVIA.base}/tiles/${SAT_LLUVIA.prod}/${d}/${h}/{z}/{x}/{y}.png`, {
+        maxNativeZoom: 7, maxZoom: 18, opacity: 0.72, zIndex: 380, crossOrigin: "anonymous",
+        attribution: "Lluvia por satélite: NOAA Hydro-Estimator (SSEC RealEarth)"
+      }).addTo(map);
+      for (const k of satTeselas.keys()) if (!k.endsWith("@" + clave)) satTeselas.delete(k);
+    }
+    const edad = Math.max(0, Math.round((Date.now() - satLluviaHora) / 60000));
+    el.textContent = `Estimación de las ${horaLocal(satLluviaHora)} (hace ${edad} min). La calcula el satélite GOES-19 según lo frías y altas que están las nubes: ve todo el país sin que la cordillera la tape, pero es menos precisa que un radar (puede correrse unos km y se le escapa la llovizna).` +
+      (satLluviaAuto ? " La prendí sola porque este lugar está fuera del radar de Mendoza." : "");
+  } catch (e) {
+    if (yo === pedidoSatLluvia) el.textContent = "No pude cargar la lluvia por satélite: " + e.message + ".";
+  }
+}
+function prenderSatLluvia(on, auto) {
+  satLluviaOn = on; satLluviaAuto = !!(on && auto);
+  if (!auto) guardarLocal("miClimaSatLluvia", on);
+  actualizarSatLluvia(); marcarCapas();
+}
+// Lee la lluvia estimada en un punto (solo de las teselas ya bajadas; las que faltan se piden para la próxima)
+function satTesela(z, x, y) {
+  const k = `${z}/${x}/${y}@${satLluviaClave}`;
+  let t = satTeselas.get(k);
+  if (t) return t.datos;
+  t = { datos: null }; satTeselas.set(k, t);
+  const [d, h] = satLluviaClave.split("."), img = new Image();
+  img.crossOrigin = "anonymous";
+  img.onload = () => { try { const c = document.createElement("canvas"); c.width = c.height = 256; const g = c.getContext("2d", { willReadFrequently: true }); g.drawImage(img, 0, 0); t.datos = g.getImageData(0, 0, 256, 256).data; } catch (e) { /* sin permiso para leer */ } };
+  img.onerror = () => satTeselas.delete(k);
+  img.src = `${SAT_LLUVIA.base}/tiles/${SAT_LLUVIA.prod}/${d}/${h}/${z}/${x}/${y}.png`;
+  return null;
+}
+function lluviaSatEn(lat, lon) {
+  if (!satLluviaClave) return null;
+  const z = 7, n = 2 ** z, fx = (lon + 180) / 360 * n, fy = (1 - Math.asinh(Math.tan(lat * Math.PI / 180)) / Math.PI) / 2 * n;
+  const datos = satTesela(z, Math.floor(fx), Math.floor(fy));
+  if (!datos) return null;
+  const k = ((Math.floor((fy % 1) * 256) * 256) + Math.floor((fx % 1) * 256)) * 4;
+  return datos[k + 3] > 20 ? mmDeColor(datos[k], datos[k + 1], datos[k + 2]) : 0;
+}
+
 // ---- Botones de capas ----
 function aplicarFondo() {
   if (fondoSat) { map.removeLayer(capaCalles); capaSat.addTo(map); capaNombres.addTo(map); }
@@ -1800,8 +1878,9 @@ function aplicarViento() {
   }
 }
 function marcarCapas() {
-  for (const [id, on] of [["chipSat", fondoSat], ["chipNubes", nubesOn], ["chipViento", vientoOn]]) { $(id).classList.toggle("on", on); $(id).setAttribute("aria-pressed", String(on)); }
-  $("panelCapas").style.display = nubesOn || vientoOn ? "" : "none";
+  for (const [id, on] of [["chipSat", fondoSat], ["chipNubes", nubesOn], ["chipViento", vientoOn], ["chipSatLluvia", satLluviaOn]]) { $(id).classList.toggle("on", on); $(id).setAttribute("aria-pressed", String(on)); }
+  $("panelCapas").style.display = nubesOn || vientoOn || satLluviaOn ? "" : "none";
+  $("panelSatLluvia").style.display = satLluviaOn ? "" : "none";
   $("panelViento").style.display = vientoOn ? "" : "none";
   $("panelNubes").style.display = nubesOn ? "" : "none";
   document.querySelectorAll("#segNubes button").forEach(b => b.classList.toggle("on", b.dataset.n === nubesTipo));
@@ -1818,6 +1897,9 @@ function iniciarCapas() {
   map.on("click", tocarMapaViento);
   $("chipSat").addEventListener("click", () => { fondoSat = !fondoSat; guardarLocal("miClimaFondoSat", fondoSat); aplicarFondo(); marcarCapas(); });
   $("chipNubes").addEventListener("click", () => { nubesOn = !nubesOn; guardarLocal("miClimaNubes", nubesOn); aplicarNubes(false); marcarCapas(); });
+  $("escalaSatLluvia").style.background = "linear-gradient(90deg," + PALETA_SAT.filter((x, i) => i % 2 === 0 || i > 10).map(([c]) => `rgb(${c.join(",")})`).join(",") + ")";
+  $("chipSatLluvia").addEventListener("click", () => prenderSatLluvia(!satLluviaOn, false));
+  if (satLluviaOn) actualizarSatLluvia();
   $("chipViento").addEventListener("click", () => { vientoOn = !vientoOn; guardarLocal("miClimaViento", vientoOn); aplicarViento(); marcarCapas(); });
   document.querySelectorAll("#segNubes button").forEach(b => b.addEventListener("click", () => {
     if (nubesTipo === b.dataset.n) return;
@@ -2116,8 +2198,20 @@ function queHayEnEsaDireccion() {
       if (anguloEntre(vieneDe, rumbo) <= 35) lineas.push("↘ Las lluvias vienen justo de ese lado, hacia vos.");
       else if (anguloEntre(llegada.rumboMov, rumbo) <= 35) lineas.push("↗ Las lluvias se están yendo para ese lado.");
     }
-  } else if (!dentroDelRadar(pos.lat, pos.lon)) lineas.push("Fuera de la zona del radar de Mendoza: el haz te sirve para ubicarte en el mapa con RainViewer.");
-  else lineas.push("Sin radar de Mendoza en este momento.");
+  } else if (!satLluviaOn) lineas.push(dentroDelRadar(pos.lat, pos.lon) ? "Sin radar de Mendoza en este momento: prendé 🌧️ Lluvia satélite." : "Fuera de la zona del radar de Mendoza: prendé 🌧️ Lluvia satélite para ver qué hay en esa dirección.");
+  if (satLluviaOn && satLluviaClave) {
+    let primera = null, maxima = 0, faltan = false;
+    for (let dkm = 5; dkm <= 300; dkm += 5) for (let a = -SECTOR_ANCHO; a <= SECTOR_ANCHO; a += 4) {
+      const [la, lo] = puntoA(pos.lat, pos.lon, rumbo + a, dkm), v = lluviaSatEn(la, lo);
+      if (v === null) { faltan = true; continue; }
+      if (v > 0 && !primera) primera = { d: dkm, v };
+      if (v > maxima) maxima = v;
+    }
+    const hace = satLluviaHora ? Math.max(0, Math.round((Date.now() - satLluviaHora) / 60000)) : null;
+    if (primera) lineas.push(`🛰️ Satélite (hace ${hace} min): ${textoMm(maxima)} en esa dirección, la más cercana a ${primera.d} km.`);
+    else if (!faltan) lineas.push(`🛰️ Satélite (hace ${hace} min): sin lluvia en esa dirección hasta 300 km.`);
+    else lineas.push("🛰️ Revisando la lluvia por satélite en esa dirección…");
+  }
   let nRayos = 0, rayoCerca = null;
   for (const r of rayos.values()) {
     const d = kmEntre(pos.lat, pos.lon, r.lat, r.lon);
@@ -2671,7 +2765,7 @@ async function iniciar() {
   setInterval(actualizarRayos, RAYOS_CADA_MS);
   setInterval(() => { if (document.visibilityState === "visible") { cargarClima(); cargarAire(); cargarSmn(); } }, CLIMA_CADA_MS);
   setInterval(() => { if (document.visibilityState === "visible") cargarReportes(); }, 2 * 60000);
-  setInterval(() => { if (document.visibilityState === "visible" && tabActual === "radar") { actualizarNubes(false); cargarViento(); } }, NUBES_CADA_MS);
+  setInterval(() => { if (document.visibilityState === "visible" && tabActual === "radar") { actualizarNubes(false); cargarViento(); actualizarSatLluvia(); } }, NUBES_CADA_MS);
 }
 iniciar().catch(e => { info.textContent = "Error al iniciar la app: " + e.message; });
 </script>
