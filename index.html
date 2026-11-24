@@ -293,6 +293,7 @@ nav.tabs button{font-size:11px}
   <div class="panel">
     <div class="seg" role="group" aria-label="Fuente del radar">
       <button id="srcMza" type="button" class="on">Radar Mendoza (HD)</button>
+      <button id="srcSin" type="button">Radares nacionales</button>
       <button id="srcRv" type="button">RainViewer</button>
     </div>
     <div class="row">
@@ -361,7 +362,7 @@ nav.tabs button{font-size:11px}
     Pronóstico: Open-Meteo (CC BY 4.0). Radar y rayos: Dirección de Agricultura y Contingencias Climáticas, Gobierno de Mendoza
     (<a href="https://www2.contingencias.mendoza.gov.ar/radar/web/" target="_blank" rel="noopener">radar oficial</a>), rayos del satélite GOES-19 (NOAA).
     Radar regional: RainViewer (Weather data by RainViewer). Mapa: © OpenStreetMap. Vista satelital: Esri World Imagery (© Esri, Maxar, Earthstar Geographics).
-    Nubes: satélite GOES-East (NOAA) servido por NASA GIBS. Viento animado: pronóstico de Open-Meteo. Nombre del lugar: OpenStreetMap Nominatim. Calidad del aire: Open-Meteo (CAMS). Búsqueda de ciudades: Open-Meteo (GeoNames). Rutas: OSRM (OpenStreetMap). Avisos oficiales: Servicio Meteorológico Nacional (feed CAP). Ideas tomadas de AlertaClima, de Mauricio Rojas. App de uso personal.
+    Nubes: satélite GOES-East (NOAA) servido por NASA GIBS. Viento animado: pronóstico de Open-Meteo. Nombre del lugar: OpenStreetMap Nominatim. Calidad del aire: Open-Meteo (CAMS). Búsqueda de ciudades: Open-Meteo (GeoNames). Rutas: OSRM (OpenStreetMap). Avisos oficiales: Servicio Meteorológico Nacional (feed CAP). Radares nacionales: SINARAME, Sistema Nacional de Radares Meteorológicos (información oficial). Inspirada en AlertaClima, de Mauricio Rojas. App de uso personal.
   </div>
 </section>
 
@@ -794,12 +795,17 @@ function ajustarRadarAlLugar(centrar) {
   const nota = $("notaZona");
   if (!dentro) {
     nota.style.display = "";
-    nota.innerHTML = 'En esta zona no llega el radar de Mendoza: se muestra la <b>lluvia estimada por satélite</b> (NOAA, con unos 40 minutos de atraso). Mirá también el <a href="https://www.smn.gob.ar/radar" target="_blank" rel="noopener">radar oficial del SMN</a>' + (l.lat < -50 ? " (el de Río Grande es el RMA9)." : ".");
-    if (!satLluviaOn) prenderSatLluvia(true, true);
+    if (sinCubre(l.lat, l.lon)) {
+      nota.innerHTML = "En esta zona no llega el radar de Mendoza: se muestran los <b>radares nacionales</b> (SINARAME, información oficial, con 30 a 40 minutos de atraso).";
+      if (fuente !== "sin") { radarAuto = true; verSinarame(); }
+    } else {
+      nota.innerHTML = 'En esta zona no llega el radar de Mendoza ni los radares nacionales: se muestra la <b>lluvia estimada por satélite</b> (NOAA, con unos 40 minutos de atraso).';
+      if (!satLluviaOn) prenderSatLluvia(true, true);
+    }
   } else {
     nota.style.display = "none";
     if (satLluviaAuto) prenderSatLluvia(false, true);
-    if (fuente === "rv" && radarAuto) { radarAuto = false; verMendoza(false); }
+    if ((fuente === "rv" || fuente === "sin") && radarAuto) { radarAuto = false; verMendoza(false); }
   }
 }
 
@@ -1485,14 +1491,194 @@ async function cargarRainViewer() {
 function quitarRainViewer() { rvFrames.forEach(f => map.removeLayer(f.layer)); rvFrames = []; }
 function mostrarRv(i) { rvFrames.forEach((f, k) => f.layer.setOpacity(k === i ? 0.7 : 0)); }
 
+// =================== Radares nacionales SINARAME ===================
+// Información oficial del Sistema Nacional de Radares Meteorológicos (radares.hidricosargentina.gob.ar).
+// Cada radar publica una imagen cada 10 minutos (hora argentina), que cubre 240 km a la redonda y llega con 30 a 40 min de atraso.
+// Con el intermediario versión 5 las imágenes pasan por él (guardadas un día) y se limpian; sin él, se muestran tal cual vienen.
+const SIN_OFICIAL = "https://radares.hidricosargentina.gob.ar/cache/";
+const SIN_RADARES = [
+  ["RMA1", "Córdoba", -31.441278, -64.19202], ["RMA2", "Ezeiza", -34.800817, -58.515568], ["RMA3", "Las Lomitas", -24.7303, -60.5514],
+  ["RMA4", "Resistencia", -27.451759, -59.051047], ["RMA5", "Bernardo de Irigoyen", -26.2781, -53.6708], ["RMA6", "Mar del Plata", -37.9131, -57.5278],
+  ["RMA7", "Neuquén", -38.8766, -68.1449], ["RMA8", "Mercedes", -29.1959, -58.0448], ["RMA9", "Río Grande", -53.784, -67.7443],
+  ["RMA10", "Bahía Blanca", -38.7343, -62.1634], ["RMA11", "Termas de Río Hondo", -27.5026, -64.9058], ["RMA12", "Las Grutas", -40.772222, -65.076111],
+  ["RMA13", "Ituzaingó", -27.6224, -56.8417], ["RMA14", "Bolívar", -36.189205, -61.070219], ["RMA15", "Patquía", -30.0308, -66.8761],
+  ["RMA16", "Villa Reynolds", -33.7183, -65.3755], ["RMA17", "Alejandro Roca", -33.351361, -63.703805], ["RMA18", "Santa Isabel", -36.223472, -66.9362805],
+  ["RMA19", "Santa Rosa (Mendoza)", -33.259194, -68.093922], ["RMA20", "Las Lajitas", -24.7448916, -64.25115], ["RMA21", "Tostado", -29.2194138, -61.7411361]
+];
+const SIN_KM = 240, SIN_PASO = 10 * 60000, SIN_CUADROS = 6, SIN_MAX = 6, SIN_UMBRAL = 15;
+// Escala oficial del visor (de -15 a 75 dBZ, un color cada 5 dBZ)
+const SIN_ESCALA = ["#3d416b", "#3b4f78", "#3d5989", "#3d6595", "#3772a6", "#3189bb", "#25a1cf", "#4ce132", "#3ab027", "#237219",
+  "#c9d333", "#d69818", "#c50017", "#c1005f", "#cb00cd", "#e2f5ee", "#a7ecce", "#7fe0b8", "#5ad4a2"];
+const SIN_PALETA = (() => {   // un color por cada dBZ, interpolando entre los de la escala
+  const hex = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16)), out = [];
+  for (let d = -15; d <= 75; d++) {
+    const f = (d + 15) / 5, i = Math.min(SIN_ESCALA.length - 2, Math.floor(f)), t = f - i, a = hex(SIN_ESCALA[i]), b = hex(SIN_ESCALA[i + 1]);
+    out.push([d, a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t]);
+  }
+  return out;
+})();
+const sinColorCache = new Map();
+function sinDbz(r, g, b) {
+  const k = (r << 16) | (g << 8) | b;
+  let v = sinColorCache.get(k);
+  if (v !== undefined) return v;
+  let mejor = -99, dist = Infinity;
+  for (const [d, pr, pg, pb] of SIN_PALETA) { const e = (pr - r) ** 2 + (pg - g) ** 2 + (pb - b) ** 2; if (e < dist) { dist = e; mejor = d; } }
+  v = dist < 2500 ? mejor : -99;
+  sinColorCache.set(k, v);
+  return v;
+}
+let sinMoverTimer = null, sinVersionProxy = 0, sinCargados = new Map(), sinFrames = [], sinCapas = new Map(), sinCargando = false, sinCargadoEn = 0, sinPedido = 0;
+const sinLienzo = document.createElement("canvas"); sinLienzo.width = sinLienzo.height = 512;
+const sinCtx = sinLienzo.getContext("2d", { willReadFrequently: true });
+function sinLimpio() { return usarProxy && sinVersionProxy >= 5; }
+function sinNombre(t) { const d = new Date(t - 3 * 3600000); return `${d.getUTCFullYear()}${pad(d.getUTCMonth() + 1)}${pad(d.getUTCDate())}${pad(d.getUTCHours())}${pad(d.getUTCMinutes())}00`; }
+function sinUrl(id, t) { return sinLimpio() ? `${PROXY}/sinarame/${id}/${sinNombre(t)}.png` : `${SIN_OFICIAL}${id}/${sinNombre(t)}.png`; }
+function sinLimites(r) {
+  const dLat = SIN_KM / 110.574, dLon = SIN_KM / (111.32 * Math.cos(r[2] * Math.PI / 180));
+  return [[r[2] - dLat, r[3] - dLon], [r[2] + dLat, r[3] + dLon]];
+}
+function sinCubre(lat, lon) { return SIN_RADARES.some(r => kmEntre(lat, lon, r[2], r[3]) <= SIN_KM - 10); }
+// Radares cuyo círculo de 240 km toca lo que se ve en el mapa (los más cercanos al centro primero)
+function sinRadaresVisibles() {
+  const b = map.getBounds(), c = map.getCenter();
+  return SIN_RADARES.filter(r => {
+    const la = Math.max(b.getSouth(), Math.min(b.getNorth(), r[2])), lo = Math.max(b.getWest(), Math.min(b.getEast(), r[3]));
+    return kmEntre(la, lo, r[2], r[3]) <= SIN_KM;
+  }).sort((a, z) => kmEntre(c.lat, c.lng, a[2], a[3]) - kmEntre(c.lat, c.lng, z[2], z[3])).slice(0, SIN_MAX);
+}
+// Baja una imagen; si hay intermediario v5 la limpia (saca el ruido débil y los puntos sueltos) y devuelve su dirección
+function sinImagen(id, t) {
+  return new Promise(resolve => {
+    const img = new Image(), limpiar = sinLimpio();
+    if (limpiar) img.crossOrigin = "anonymous";
+    let listo = false;
+    const fin = v => { if (!listo) { listo = true; resolve(v); } };
+    img.onload = () => {
+      if (!limpiar) return fin({ url: img.src, grilla: null });
+      try {
+        sinCtx.clearRect(0, 0, 512, 512); sinCtx.drawImage(img, 0, 0, 512, 512);
+        const d = sinCtx.getImageData(0, 0, 512, 512).data, grilla = new Int8Array(512 * 512);
+        for (let i = 0, p = 0; i < grilla.length; i++, p += 4) grilla[i] = d[p + 3] < 110 ? -99 : sinDbz(d[p], d[p + 1], d[p + 2]);
+        fin({ url: null, grilla, cruda: img.src });
+      } catch (e) { fin({ url: img.src, grilla: null }); }
+    };
+    img.onerror = () => fin(null);
+    setTimeout(() => fin(null), 15000);
+    img.src = sinUrl(id, t);
+  });
+}
+// Pinta una imagen limpia: sin lluvia débil, sin puntos sueltos y sin los ecos fijos de los cerros (mascara)
+function sinPintar(grilla, fijos) {
+  return new Promise(res => {
+    const img = sinCtx.createImageData(512, 512), d = img.data, ok = i => grilla[i] >= SIN_UMBRAL && !(fijos && fijos[i]);
+    for (let y = 1; y < 511; y++) for (let x = 1; x < 511; x++) {
+      const i = y * 512 + x;
+      if (!ok(i)) continue;
+      let n = 0;
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if ((dy || dx) && ok(i + dy * 512 + dx)) n++;
+      if (n < 3) continue;
+      const c = SIN_PALETA[Math.min(90, grilla[i] + 15)], p = i * 4;
+      d[p] = c[1]; d[p + 1] = c[2]; d[p + 2] = c[3]; d[p + 3] = 255;
+    }
+    sinCtx.putImageData(img, 0, 0);
+    sinLienzo.toBlob(bl => res(bl ? URL.createObjectURL(bl) : null), "image/png");
+  });
+}
+// Ecos fijos: puntos con eco en todas las imágenes de la última hora (cerros, edificios). La lluvia de verdad se mueve.
+function sinEcosFijos(frames) {
+  const distintos = [...new Set(frames.filter(f => f && f.grilla))].map(f => f.grilla);
+  if (distintos.length < 4) return null;
+  const fijos = new Uint8Array(512 * 512);
+  for (let i = 0; i < fijos.length; i++) { let n = 0; for (const g of distintos) if (g[i] >= SIN_UMBRAL) n++; if (n === distintos.length) fijos[i] = 1; }
+  // se agranda un poco la máscara (los cerros "tiemblan" un píxel entre imagen e imagen)
+  const ancho = new Uint8Array(fijos);
+  for (let y = 1; y < 511; y++) for (let x = 1; x < 511; x++) if (fijos[y * 512 + x]) for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) ancho[(y + dy) * 512 + x + dx] = 1;
+  return ancho;
+}
+
+// Última imagen disponible de un radar: prueba de la más nueva a la más vieja (hasta 2 horas)
+async function sinUltima(id) {
+  const base = Math.floor(Date.now() / SIN_PASO) * SIN_PASO;
+  for (let k = 1; k <= 12; k++) {
+    const t = base - k * SIN_PASO, im = await sinImagen(id, t);
+    if (im) return { t, im };
+  }
+  return null;
+}
+function sinLiberar(c) { if (c && c.frames) c.frames.forEach(f => f && f.url && f.url.startsWith("blob:") && setTimeout(() => URL.revokeObjectURL(f.url), 5000)); }
+async function cargarSinarame(forzar) {
+  if (sinCargando || !map) return;
+  sinCargando = true;
+  const yo = ++sinPedido;
+  try {
+    const radares = sinRadaresVisibles();
+    if (!radares.length) { info.textContent = ""; avisoRadar("No hay radares nacionales que cubran esta zona. Probá con 🌧️ Lluvia satélite."); return; }
+    info.textContent = `Buscando las imágenes de ${radares.length} radar${radares.length === 1 ? "" : "es"} nacional${radares.length === 1 ? "" : "es"} (SINARAME)…`;
+    await Promise.all(radares.map(async r => {
+      const ya = sinCargados.get(r[0]);
+      if (ya && !forzar && Date.now() - ya.en < SIN_PASO) return;
+      const u = await sinUltima(r[0]);
+      if (!u) { sinCargados.set(r[0], { r, en: Date.now(), t0: null, frames: [] }); return; }
+      if (ya && ya.t0 === u.t) { ya.en = Date.now(); return; }
+      const frames = new Array(SIN_CUADROS).fill(null);
+      frames[SIN_CUADROS - 1] = u.im;
+      const anteriores = await Promise.all(Array.from({ length: SIN_CUADROS - 1 }, (_, k) => sinImagen(r[0], u.t - (SIN_CUADROS - 1 - k) * SIN_PASO)));
+      anteriores.forEach((im, k) => { frames[k] = im; });
+      for (let k = 1; k < SIN_CUADROS; k++) if (!frames[k]) frames[k] = frames[k - 1];
+      for (let k = SIN_CUADROS - 2; k >= 0; k--) if (!frames[k]) frames[k] = frames[k + 1];
+      if (frames[0].grilla) {   // con intermediario v5: se pintan limpias
+        // No se borran los ecos "fijos": una tormenta quieta toda la hora también los tiene, y borrarla sería peor
+        const fijos = null, hechos = new Map();
+        for (const f of frames) { if (!hechos.has(f)) hechos.set(f, await sinPintar(f.grilla, fijos)); f.url = hechos.get(f) || f.cruda; }
+      }
+      sinLiberar(ya);
+      sinCargados.set(r[0], { r, en: Date.now(), t0: u.t, frames });
+    }));
+    if (yo !== sinPedido || fuente !== "sin") return;
+    // quitar del mapa los radares que ya no se ven
+    const ids = new Set(radares.map(r => r[0]));
+    for (const [id, capa] of sinCapas) if (!ids.has(id)) { map.removeLayer(capa); sinCapas.delete(id); }
+    const conDatos = radares.map(r => sinCargados.get(r[0])).filter(c => c && c.t0);
+    if (!conDatos.length) { info.textContent = ""; avisoRadar("Los radares nacionales de esta zona no tienen imágenes de las últimas 2 horas."); sinFrames = []; return; }
+    const t0 = Math.max(...conDatos.map(c => c.t0));
+    sinFrames = Array.from({ length: SIN_CUADROS }, (_, k) => ({ t: t0 - (SIN_CUADROS - 1 - k) * SIN_PASO }));
+    for (const c of conDatos) if (!sinCapas.has(c.r[0])) sinCapas.set(c.r[0], L.imageOverlay(c.frames[SIN_CUADROS - 1].url, sinLimites(c.r), opcionesOverlay(0.8, 400)).addTo(map));
+    sinCargadoEn = Date.now();
+    mostrar(sinFrames.length - 1);
+  } catch (e) {
+    info.textContent = "No pude cargar los radares nacionales: " + e.message;
+  } finally { sinCargando = false; }
+}
+function mostrarSin(i) {
+  for (const [id, capa] of sinCapas) {
+    const c = sinCargados.get(id);
+    if (c && c.frames[i]) { capa.setUrl(c.frames[i].url); capa.setOpacity(0.8); }
+  }
+}
+function ocultarSinarame() { for (const capa of sinCapas.values()) map.removeLayer(capa); sinCapas.clear(); }
+function textoSinarame() {
+  const radares = [...sinCapas.keys()].map(id => sinCargados.get(id)).filter(Boolean);
+  const nombres = radares.map(c => `${c.r[1]} (${c.r[0]})`).join(", ");
+  const atrasados = radares.filter(c => c.t0 && sinFrames.length && c.t0 < sinFrames[sinFrames.length - 1].t).map(c => c.r[1]);
+  return `Radares: ${nombres}.` + (atrasados.length ? ` Atrasados (muestran su última imagen): ${atrasados.join(", ")}.` : "") +
+    " Fuente oficial: SINARAME (Sistema Nacional de Radares Meteorológicos). Llegan con 30 a 40 min de atraso." +
+    " Las franjas largas y quietas pegadas a la cordillera suelen ser rebotes del radar en los cerros, no lluvia: comparalas con el radar de Mendoza." +
+    (sinLimpio() ? "" : " ⚠ Se ven sin limpiar (con ruido): actualizá tu intermediario a la versión 5.");
+}
+async function verSinarame() {
+  fuente = "sin"; marcarBotones(); ocultarMendoza(); quitarRainViewer();
+  await cargarSinarame(false);
+}
+
 // =================== Animación ===================
-function cuadrosActuales() { return fuente === "mza" ? mzaFrames : rvFrames; }
-function tiempoDe(k) { return fuente === "mza" ? mzaFrames[k] : rvFrames[k].t; }
+function cuadrosActuales() { return fuente === "mza" ? mzaFrames : fuente === "sin" ? sinFrames : rvFrames; }
+function tiempoDe(k) { return fuente === "mza" ? mzaFrames[k] : fuente === "sin" ? sinFrames[k].t : rvFrames[k].t; }
 function mostrar(i) {
   const lista = cuadrosActuales();
   if (!lista.length) return;
   idx = Math.max(0, Math.min(i, lista.length - 1));
-  if (fuente === "mza") mostrarMza(idx); else mostrarRv(idx);
+  if (fuente === "mza") mostrarMza(idx); else if (fuente === "sin") mostrarSin(idx); else mostrarRv(idx);
   $("slider").max = lista.length - 1;
   $("slider").value = idx;
   actualizarInfo();
@@ -1500,21 +1686,22 @@ function mostrar(i) {
 function actualizarInfo() {
   const lista = cuadrosActuales();
   if (!lista.length) return;
-  const nombre = fuente === "mza" ? (usarProxy && limpio ? "Radar Mendoza (limpio)" : "Radar Mendoza") : "RainViewer";
+  const nombre = fuente === "mza" ? (usarProxy && limpio ? "Radar Mendoza (limpio)" : "Radar Mendoza") : fuente === "sin" ? "Radares nacionales" : "RainViewer";
   const edadMin = Math.max(0, Math.round((Date.now() - tiempoDe(lista.length - 1)) / 60000));
   const futuro = fuente === "rv" && rvFrames[idx].futuro ? " (pronóstico de radar)" : "";
   info.textContent = `${nombre} ${horaLocal(tiempoDe(idx))}${futuro} · imagen ${idx + 1} de ${lista.length} · la última es de hace ${edadMin} min`;
+  if (fuente === "sin") { const w = document.createElement("div"); w.className = "small"; w.textContent = textoSinarame(); info.appendChild(w); return; }
   if (fuente === "rv") avisoRadar("Ojo: RainViewer hoy casi no tiene datos de Argentina (puede mostrar todo limpio aunque llueva). Usá el radar de Mendoza o 🌧️ Lluvia satélite.");
-  if (edadMin > ATRASADO_MIN) avisoRadar(`⚠ El radar está atrasado: no hay imágenes nuevas hace ${edadMin} minutos.`);
+  if (edadMin > (fuente === "sin" ? 70 : ATRASADO_MIN)) avisoRadar(`⚠ El radar está atrasado: no hay imágenes nuevas hace ${edadMin} minutos.`);
 }
 function avisoRadar(m) { const w = document.createElement("div"); w.className = "warn"; w.textContent = m; info.appendChild(w); }
 async function verMendoza(permitirCambio) {
-  fuente = "mza"; marcarBotones(); quitarRainViewer();
+  fuente = "mza"; marcarBotones(); quitarRainViewer(); ocultarSinarame();
   info.textContent = "Buscando imágenes del radar de Mendoza…";
   try { await actualizarMendoza(); } catch (e) { info.textContent = "Error al buscar el radar de Mendoza: " + e.message; return; }
   if (fuente !== "mza") return;
   if (!mzaFrames.length) {
-    if (permitirCambio) { info.textContent = ""; avisoRadar("El radar de Mendoza no tiene imágenes de los últimos 40 minutos: prendí la lluvia estimada por satélite."); if (!satLluviaOn) prenderSatLluvia(true, true); }
+    if (permitirCambio) { radarAuto = true; await verSinarame(); avisoRadar("El radar de Mendoza no tiene imágenes de los últimos 40 minutos: muestro los radares nacionales (SINARAME)."); }
     else { info.textContent = ""; avisoRadar("El radar de Mendoza no tiene imágenes de los últimos 40 minutos. Probá más tarde o usá RainViewer."); }
     evaluarAlarma();
     return;
@@ -1523,7 +1710,7 @@ async function verMendoza(permitirCambio) {
   evaluarAlarma();
 }
 async function verRainViewer() {
-  fuente = "rv"; marcarBotones(); ocultarMendoza();
+  fuente = "rv"; marcarBotones(); ocultarMendoza(); ocultarSinarame();
   info.textContent = "Cargando RainViewer…";
   try { await cargarRainViewer(); } catch (e) { info.textContent = "No pude cargar RainViewer: " + e.message; return; }
   if (fuente !== "rv") { quitarRainViewer(); return; }
@@ -1532,6 +1719,7 @@ async function verRainViewer() {
 function marcarBotones() {
   $("srcMza").classList.toggle("on", fuente === "mza");
   $("srcRv").classList.toggle("on", fuente === "rv");
+  $("srcSin").classList.toggle("on", fuente === "sin");
   $("hailWrap").style.display = fuente === "mza" ? "" : "none";
   $("limpioWrap").style.display = fuente === "mza" && usarProxy ? "" : "none";
 }
@@ -1544,6 +1732,8 @@ async function refrescar() {
     if (fuente === "mza" && mzaFrames.length) {
       const nuevoIdx = mzaFrames.indexOf(tActual);
       mostrar(estabaEnUltimo || nuevoIdx < 0 ? mzaFrames.length - 1 : nuevoIdx);
+    } else if (fuente === "sin") {
+      if (Date.now() - sinCargadoEn > SIN_PASO) await cargarSinarame(false); else actualizarInfo();
     } else if (fuente === "rv") {
       if (Date.now() - rvCargadoEn > 9 * 60 * 1000) await verRainViewer(); else actualizarInfo();
     }
@@ -2039,7 +2229,7 @@ function iniciarCapas() {
   capaNombres = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}", { maxZoom: 18, zIndex: 500 });
   $("escalaViento").style.background = "linear-gradient(90deg," + [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100].map(v => `rgb(${colorViento(v).map(Math.round).join(",")})`).join(",") + ")";
   aplicarFondo(); aplicarNubes(false); aplicarViento(); marcarCapas();
-  map.on("moveend", () => { if (vientoOn) programarViento(); });
+  map.on("moveend", () => { if (vientoOn) programarViento(); if (fuente === "sin") { clearTimeout(sinMoverTimer); sinMoverTimer = setTimeout(() => { const ids = sinRadaresVisibles().map(r => r[0]); if (ids.some(id => !sinCapas.has(id) && !(sinCargados.get(id) && !sinCargados.get(id).t0))) cargarSinarame(false); }, 1200); } });
   map.on("click", tocarMapaViento);
   $("chipSat").addEventListener("click", () => { fondoSat = !fondoSat; guardarLocal("miClimaFondoSat", fondoSat); aplicarFondo(); marcarCapas(); });
   $("chipNubes").addEventListener("click", () => { nubesOn = !nubesOn; guardarLocal("miClimaNubes", nubesOn); aplicarNubes(false); marcarCapas(); });
@@ -2087,6 +2277,7 @@ $("btnPlay").addEventListener("click", () => { playing = !playing; $("btnPlay").
 $("slider").addEventListener("input", () => { playing = false; $("btnPlay").textContent = "▶"; mostrar(Number($("slider").value)); });
 $("srcMza").addEventListener("click", () => { radarAuto = false; if (fuente !== "mza") verMendoza(false); });
 $("srcRv").addEventListener("click", () => { radarAuto = false; if (fuente !== "rv") verRainViewer(); });
+$("srcSin").addEventListener("click", () => { radarAuto = false; if (fuente !== "sin") verSinarame(); });
 $("btnLugar").addEventListener("click", abrirLugares);
 $("cerrarLugares").addEventListener("click", cerrarLugares);
 $("hojaLugares").addEventListener("click", e => { if (e.target.id === "hojaLugares") cerrarLugares(); });
@@ -2914,6 +3105,8 @@ async function probarProxy() {
     const ctrl = new AbortController(), corte = setTimeout(() => ctrl.abort(), 8000);
     const r = await fetch(PROXY + "/", { cache: "no-store", signal: ctrl.signal });
     clearTimeout(corte);
+    const m = /versi[oó]n (\d+)/.exec(await r.text());
+    sinVersionProxy = m ? Number(m[1]) : 0;
     return r.ok;
   } catch (e) { return false; }
 }

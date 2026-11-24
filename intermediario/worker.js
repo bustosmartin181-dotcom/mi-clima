@@ -1,4 +1,4 @@
-// Mi Clima - intermediario (Cloudflare Worker) - versión 4
+// Mi Clima - intermediario (Cloudflare Worker) - versión 5
 // 1) Deja que la app lea del sitio de Contingencias Climáticas de Mendoza:
 //      /rayos                              -> rayos del satélite (solo zona Mendoza)
 //      /radar/AAAAMMDD/HHMMSS_dbz.png      -> imagen del radar
@@ -14,6 +14,9 @@
 //      /smn?u=<enlace>      -> detalle de un aviso (solo enlaces de ssl.smn.gob.ar/feeds/)
 //      GET  /reportes       -> reportes de los usuarios de las últimas 3 horas
 //      POST /reportes       -> guarda un reporte {lat, lon, tipo, tam} (usa el KV MI_CLIMA)
+// 5) (versión 5) Radares nacionales SINARAME (información oficial, radares.hidricosargentina.gob.ar):
+//      /sinarame/RMA19/AAAAMMDDHHMM00.png -> imagen de un radar (hora argentina, una cada 10 minutos)
+//    Cada imagen se guarda un día en la caché de Cloudflare, para no pedirle de más al servidor oficial.
 
 const ORIGEN = "https://www2.contingencias.mendoza.gov.ar";
 const APP = "https://bustosmartin181-dotcom.github.io/mi-clima/";
@@ -538,6 +541,22 @@ async function smn(url, cors) {
   }
 }
 
+// ---------- Radares nacionales SINARAME ----------
+const SINARAME = "https://radares.hidricosargentina.gob.ar/cache/";
+const RUTA_SINARAME = /^\/sinarame\/(RMA\d{1,2})\/(\d{14})\.png$/;
+async function imagenSinarame(m, cors) {
+  try {
+    const r = await fetch(`${SINARAME}${m[1]}/${m[2]}.png`, {
+      headers: { "User-Agent": "MiClima/5 (uso personal)" },
+      cf: { cacheEverything: true, cacheTtlByStatus: { "200-299": 86400, "404": 120, "500-599": 0 } }
+    });
+    if (!r.ok) return texto("Sin imagen", r.status === 404 ? 404 : 502, cors);
+    return new Response(r.body, { status: 200, headers: Object.assign({ "Content-Type": "image/png", "Cache-Control": "public, max-age=86400" }, cors) });
+  } catch (e) {
+    return texto("No pude leer SINARAME: " + e.message, 502, cors);
+  }
+}
+
 // ---------- Reportes de los usuarios (qué está cayendo) ----------
 const REPORTE_VIDA_MS = 3 * 3600000;
 const REPORTE_TIPOS = ["nada", "llovizna", "lluvia", "lluviaFuerte", "granizo", "viento", "nieve"];
@@ -575,9 +594,11 @@ export default {
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
 
     if (request.method === "GET" || request.method === "HEAD") {
-      if (url.pathname === "/") return texto("Mi Clima: intermediario funcionando (versión 4)" + (env.MI_CLIMA ? " · avisos listos" : " · falta conectar el KV MI_CLIMA") + (env.CODIGO ? " · con código de invitación" : ""), 200, cors);
+      if (url.pathname === "/") return texto("Mi Clima: intermediario funcionando (versión 5)" + (env.MI_CLIMA ? " · avisos listos" : " · falta conectar el KV MI_CLIMA") + (env.CODIGO ? " · con código de invitación" : ""), 200, cors);
       if (url.pathname === "/rayos") return rayos(cors);
       if (url.pathname === "/smn") return smn(url, cors);
+      const ms = url.pathname.match(RUTA_SINARAME);
+      if (ms) return imagenSinarame(ms, cors);
       const m = url.pathname.match(RUTA_RADAR);
       if (m) return imagenRadar(m, cors);
     }
