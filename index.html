@@ -452,9 +452,13 @@ try {
 } catch (e) { /* sin parámetros */ }
 
 const MZA_BASE = "https://www2.contingencias.mendoza.gov.ar/radar/web/";
+// Corrimiento de la imagen de Contingencias: comparando con los rayos, dibuja la lluvia unos 17 km al este y 2 km al norte
+// de donde cae de verdad (medición de Mauricio Rojas, AlertaClima). Se corrige moviendo la imagen. Para sacarlo: poner 0 y 0.
+const CORRIMIENTO_MZA = { kmEste: 17, kmNorte: 2 };
 const MZA_BOUNDS = (() => {
   const oLat = -34.0, oLon = -68.0, kmPorGradoLat = 110.924, kmPorGradoLon = 92.425, ajuste = 0.046;
-  return [[oLat - 250 / kmPorGradoLat + ajuste, oLon - 250 / kmPorGradoLon], [oLat + 450 / kmPorGradoLat + ajuste, oLon + 250 / kmPorGradoLon]];
+  const dLat = CORRIMIENTO_MZA.kmNorte / 110.574, dLon = CORRIMIENTO_MZA.kmEste / (111.32 * Math.cos(-33 * Math.PI / 180));
+  return [[oLat - 250 / kmPorGradoLat + ajuste - dLat, oLon - 250 / kmPorGradoLon - dLon], [oLat + 450 / kmPorGradoLat + ajuste - dLat, oLon + 250 / kmPorGradoLon - dLon]];
 })();
 const ANCHO = 500, ALTO = 700;
 const PASO_MS = 2 * 60 * 1000, CUADROS = 20, ATRASADO_MIN = 20, OPACIDAD_MZA = 0.85;
@@ -1046,6 +1050,14 @@ function masCercano(comps, lat, lon) {
   }
   return { km: mejor, maxDbz };
 }
+function nucleoMasCercano(comps, lat, lon) {
+  let mejor = null;
+  for (const c of comps) for (const k of c.px) {
+    const la = LAT_FILA[(k / ANCHO) | 0], lo = LON_COL[k % ANCHO], d = kmEntre(lat, lon, la, lo);
+    if (!mejor || d < mejor.km) mejor = { km: d, lat: la, lon: lo, maxDbz: c.max };
+  }
+  return mejor;
+}
 function maximoCerca(grilla, lat, lon, radioKm) {
   const p = aPixel(lat, lon), r = Math.ceil(radioKm) + 1;
   let max = 0;
@@ -1101,13 +1113,11 @@ async function evaluarAlarma() {
     let tPrev = null;
     for (const t of mzaFrames) if (t0 - t >= 6 * 60000 && t0 - t <= 14 * 60000 && (tPrev === null || Math.abs(t0 - t - 600000) < Math.abs(t0 - tPrev - 600000))) tPrev = t;
     const aPrev = tPrev !== null ? analizar(mzaUrl(tPrev, "dbz"), "dbz") : null;
+    let tPrev2 = null;
+    if (tPrev !== null) for (const t of mzaFrames) if (tPrev - t >= 6 * 60000 && tPrev - t <= 14 * 60000 && (tPrev2 === null || Math.abs(tPrev - t - 600000) < Math.abs(tPrev - tPrev2 - 600000))) tPrev2 = t;
+    const aPrev2 = tPrev2 !== null ? analizar(mzaUrl(tPrev2, "dbz"), "dbz") : null;
     const encima = maximoCerca(a0.grilla, lat, lon, 3);
     const nucleo = masCercano(a0.nucleos, lat, lon), lluvia = masCercano(a0.lluvias, lat, lon);
-    let tendencia = null;
-    if (aPrev && isFinite(nucleo.km)) {
-      const dPrev = masCercano(aPrev.nucleos, lat, lon).km;
-      if (isFinite(dPrev)) { const v = (dPrev - nucleo.km) / ((t0 - tPrev) / 3600000); tendencia = { v, eta: v >= 5 && nucleo.km > 3 ? nucleo.km / v * 60 : null }; }
-    }
     let granizo = 0;
     const urlG = mzaUrl(t0, "granizo");
     if (await precargar(urlG, 10000)) { const g = analizar(urlG, "granizo"); if (g) granizo = maximoCerca(g.grilla, lat, lon, 15); }
@@ -1115,9 +1125,22 @@ async function evaluarAlarma() {
     // Llegada de la tormenta (se recalcula solo si hay imagen nueva o te moviste)
     let lleg = llegada;
     if (!lleg || lleg.t0 !== t0 || !lleg.lugar || kmEntre(lleg.lugar.lat, lleg.lugar.lon, lat, lon) > 1) {
-      lleg = calcularLlegada(a0, aPrev, t0, tPrev, lat, lon);
+      lleg = calcularLlegada(a0, aPrev, t0, tPrev, lat, lon, aPrev2, tPrev2);
       lleg.t0 = t0; lleg.lugar = { lat, lon };
       dibujarLlegada(lleg);
+    }
+    // Tendencia del núcleo más cercano: con el movimiento de las imágenes completas (no comparando distancias,
+    // que puede mezclar dos tormentas distintas y dar 500 km/h), y verificando que sea la misma tormenta
+    let tendencia = null;
+    const nc = nucleoMasCercano(a0.nucleos, lat, lon);
+    if (nc && lleg && lleg.cajas && aPrev) {
+      const hacia = rumboHacia(nc.lat, nc.lon, lat, lon), dif = (lleg.rumboMov - hacia) * Math.PI / 180;
+      const v = lleg.velocidad * Math.cos(dif);   // cuánto se acerca a vos (km/h)
+      // ¿la misma tormenta? En la imagen anterior tiene que estar cerca de donde el movimiento dice que estaba
+      const minutos = (t0 - tPrev) / 60000, p = aPixel(nc.lat, nc.lon), xa = p.x - lleg.vx * minutos, ya = p.y - lleg.vy * minutos;
+      const previo = xa >= 0 && ya >= 0 && xa < ANCHO && ya < ALTO ? nucleoMasCercano(aPrev.nucleos, LAT_FILA[Math.round(ya)], LON_COL[Math.round(xa)]) : null;
+      const misma = !!(previo && previo.km <= 8);
+      tendencia = { v, misma, confirmado: lleg.consistente && misma, eta: lleg.consistente && misma && v >= 5 && nc.km > 3 ? nc.km / v * 60 : null };
     }
 
     let nivel = "verde", titulo = "Sin tormentas cerca";
@@ -1126,7 +1149,7 @@ async function evaluarAlarma() {
     else if (rayo && rayo.km <= 8) { nivel = "rojo"; titulo = `Rayos a ${km(rayo.km)} km`; }
     else if (granizo >= 70 && nucleo.km <= 5) { nivel = "rojo"; titulo = "Posible granizo encima tuyo"; }
     else if (nucleo.km <= 15) { nivel = "naranja"; titulo = `Tormenta cerca: a ${km(nucleo.km)} km`; }
-    else if (lleg && lleg.etaTormenta !== null && lleg.etaTormenta > 0 && lleg.etaTormenta <= 30) { nivel = "naranja"; titulo = `Tormenta acercándose: llegaría en ~${lleg.etaTormenta} min`; }
+    else if (lleg && lleg.consistente && lleg.etaTormenta !== null && lleg.etaTormenta > 0 && lleg.etaTormenta <= 30) { nivel = "naranja"; titulo = `Tormenta acercándose: llegaría en ~${lleg.etaTormenta} min`; }
     else if (llega) { nivel = "naranja"; titulo = `Tormenta acercándose: llegaría en ~${Math.round(tendencia.eta)} min`; }
     else if (rayo && rayo.km <= 20) { nivel = "naranja"; titulo = `Rayos cerca: a ${km(rayo.km)} km`; }
     else if (encima >= LLUVIA_DBZ) { nivel = "naranja"; titulo = "Está lloviendo en tu zona"; }
@@ -1137,7 +1160,8 @@ async function evaluarAlarma() {
     if (isFinite(nucleo.km)) {
       let l = `Tormenta más cercana: a ${km(nucleo.km)} km (${nucleo.maxDbz} dBZ)`;
       if (tendencia && nucleo.km < 120) {
-        if (tendencia.v >= 5) l += `, se acerca a unos ${Math.round(tendencia.v)} km/h` + (tendencia.eta !== null ? ` (llegaría en ~${Math.round(tendencia.eta)} min)` : "");
+        if (!tendencia.confirmado) l += ", todavía no se sabe bien hacia dónde va";
+        else if (tendencia.v >= 5) l += `, se acerca a unos ${Math.round(tendencia.v)} km/h` + (tendencia.eta !== null ? ` (llegaría en ~${Math.round(tendencia.eta)} min)` : "");
         else if (tendencia.v <= -5) l += ", se aleja";
         else l += ", casi quieta";
       }
@@ -2362,10 +2386,30 @@ function textoDbz(v) {
   return ["🌤️", "Nada"];
 }
 // Calcula la llegada a partir de dos imágenes ya analizadas
-function calcularLlegada(a0, aPrev, t0, tPrev, lat, lon) {
+const VEL_MAX_KMH = 100;   // las tormentas de acá rara vez se mueven más rápido: si da más, el cálculo está mal
+function calcularLlegada(a0, aPrev, t0, tPrev, lat, lon, aPrev2, tPrev2) {
   if (!aPrev) return { sinDatos: "Hace falta una imagen de hace 10 minutos para calcular hacia dónde va la lluvia." };
-  const d = desplazamiento(a0.grilla, aPrev.grilla, lat, lon);
+  let d = desplazamiento(a0.grilla, aPrev.grilla, lat, lon);
   const ahoraEncima = maximoCerca(a0.grilla, lat, lon, 3);
+  // Segundo par de imágenes (de hace 10 a 20 min): el movimiento tiene que repetirse para confiar en él
+  let consistente = false, motivo = "";
+  if (d) {
+    const kmh = (dd, min) => { const p = aPixel(lat, lon), [a, b] = [[p.y, p.x], [p.y + dd.dy / min * 60, p.x + dd.dx / min * 60]].map(([y, x]) => [LAT_FILA[Math.max(0, Math.min(ALTO - 1, Math.round(y)))], LON_COL[Math.max(0, Math.min(ANCHO - 1, Math.round(x)))]]); return kmEntre(a[0], a[1], b[0], b[1]); };
+    const min1 = (t0 - tPrev) / 60000, v1 = kmh(d, min1);
+    if (v1 > VEL_MAX_KMH) return { quieto: true, encima: ahoraEncima, sinDatos: "El movimiento de la lluvia salió imposible (más de 100 km/h): mejor no mostrar hacia dónde va. Se vuelve a calcular con la próxima imagen." };
+    const d2 = aPrev2 ? desplazamiento(aPrev.grilla, aPrev2.grilla, lat, lon) : null;
+    if (!d2) motivo = "hace falta una imagen más para confirmar el movimiento";
+    else {
+      const min2 = (tPrev - tPrev2) / 60000, v2 = kmh(d2, min2);
+      const r1 = Math.atan2(d.dx, -d.dy) * 180 / Math.PI, r2 = Math.atan2(d2.dx, -d2.dy) * 180 / Math.PI;
+      const lentas = v1 < 8 && v2 < 8, angulo = Math.abs(((r1 - r2 + 540) % 360) - 180);
+      if (v2 <= VEL_MAX_KMH && (lentas || (angulo <= 40 && v1 <= v2 * 2 && v2 <= v1 * 2))) {
+        consistente = true;
+        // se promedian los dos movimientos (llevados a los mismos minutos)
+        d = { dx: (d.dx + d2.dx * min1 / min2) / 2, dy: (d.dy + d2.dy * min1 / min2) / 2, confianza: Math.min(d.confianza, d2.confianza) };
+      } else motivo = "el movimiento cambió mucho entre una imagen y otra";
+    }
+  }
   if (!d) {
     const lluviaCerca = masCercano(a0.lluvias, lat, lon).km;
     return { quieto: true, encima: ahoraEncima, sinDatos: isFinite(lluviaCerca) && lluviaCerca < 120 ? "Hay lluvia en la zona pero no se puede saber bien hacia dónde va (se arma y se deshace sola)." : "No hay lluvia ni tormentas a menos de 120 km." };
@@ -2386,7 +2430,7 @@ function calcularLlegada(a0, aPrev, t0, tPrev, lat, lon) {
   for (let T = 0; T <= 120; T += 5) serie.push({ T, v: valorEn(T) });
   const eta = umbral => { const s = serie.find(x => x.v >= umbral); return s ? s.T : null; };
   const cajas = [30, 60, 90, 120].map(T => ({ T, v: Math.max(...serie.filter(x => x.T > T - 30 && x.T <= T).map(x => x.v)) }));
-  return { velocidad, rumboMov, vx, vy, encima: ahoraEncima, etaTormenta: eta(NUCLEO_DBZ), etaLluvia: eta(LLUVIA_DBZ), cajas, confianza: d.confianza, t0 };
+  return { velocidad, rumboMov, vx, vy, encima: ahoraEncima, etaTormenta: eta(NUCLEO_DBZ), etaLluvia: eta(LLUVIA_DBZ), cajas, confianza: d.confianza, t0, consistente, motivo };
 }
 function dibujarLlegada(r) {
   llegada = r;
@@ -2399,6 +2443,7 @@ function dibujarLlegada(r) {
     return;
   }
   if (r.encima >= NUCLEO_DBZ) tit.textContent = "⛈️ La tormenta ya está encima tuyo.";
+  else if (!r.consistente && (r.etaTormenta !== null || r.etaLluvia !== null)) tit.textContent = "Hay lluvia que podría venir hacia vos, pero el movimiento todavía no es seguro.";
   else if (r.etaTormenta !== null) tit.textContent = `⛈️ La tormenta llegaría en ~${r.etaTormenta} min.`;
   else if (r.encima >= LLUVIA_DBZ) tit.textContent = "🌧️ Está lloviendo en tu zona.";
   else if (r.etaLluvia !== null) tit.textContent = `🌧️ La lluvia llegaría en ~${r.etaLluvia} min.`;
@@ -2413,7 +2458,8 @@ function dibujarLlegada(r) {
     div.querySelector(".t").textContent = txt;
     cajas.appendChild(div);
   }
-  inf.textContent = `Las lluvias de tu zona se mueven hacia el ${direccion(r.rumboMov)} a unos ${Math.round(r.velocidad)} km/h. ` +
+  inf.textContent = `Las lluvias de tu zona se mueven hacia el ${direccion(r.rumboMov)} a unos ${Math.round(r.velocidad)} km/h` +
+    (r.consistente ? " (confirmado en las últimas 3 imágenes). " : ` (sin confirmar: ${r.motivo}). `) +
     "Supone que siguen igual que en los últimos 10 minutos: las tormentas pueden crecer, desarmarse o doblar, así que tomalo como una guía. Mirá la flecha roja en el radar.";
   dibujarTrayectoria(r);
 }

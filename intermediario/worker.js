@@ -1,4 +1,4 @@
-// Mi Clima - intermediario (Cloudflare Worker) - versión 5
+// Mi Clima - intermediario (Cloudflare Worker) - versión 6
 // 1) Deja que la app lea del sitio de Contingencias Climáticas de Mendoza:
 //      /rayos                              -> rayos del satélite (solo zona Mendoza)
 //      /radar/AAAAMMDD/HHMMSS_dbz.png      -> imagen del radar
@@ -35,8 +35,10 @@ const PASO_MS = 2 * 60 * 1000;
 
 // ---------- Geometría del radar (igual que en la app) ----------
 const ANCHO = 500, ALTO = 700;
-const B_SUR = -34.0 - 250 / 110.924 + 0.046, B_NORTE = -34.0 + 450 / 110.924 + 0.046;
-const B_OESTE = -68.0 - 250 / 92.425, B_ESTE = -68.0 + 250 / 92.425;
+// Corrimiento de la imagen de Contingencias (igual que en la app): dibuja la lluvia ~17 km al este y ~2 km al norte
+const CORR_LAT = 2 / 110.574, CORR_LON = 17 / (111.32 * Math.cos(-33 * Math.PI / 180));
+const B_SUR = -34.0 - 250 / 110.924 + 0.046 - CORR_LAT, B_NORTE = -34.0 + 450 / 110.924 + 0.046 - CORR_LAT;
+const B_OESTE = -68.0 - 250 / 92.425 - CORR_LON, B_ESTE = -68.0 + 250 / 92.425 - CORR_LON;
 const mercY = lat => Math.log(Math.tan(Math.PI / 4 + lat * Math.PI / 360));
 const Y_N = mercY(B_NORTE), Y_S = mercY(B_SUR);
 const LON_COL = new Float64Array(ANCHO), LAT_FILA = new Float64Array(ALTO);
@@ -310,11 +312,17 @@ function decidir(a, rayosLista, lat, lon, anterior, tRadar) {
     if (!rayo || d < rayo.km) rayo = { km: d };
   }
   const dN = a ? a.dNucleo : Infinity;
-  let eta = null;
+  // Velocidad de acercamiento: se descarta si es imposible (más de 100 km/h, señal de que se compararon dos tormentas
+  // distintas) y solo se usa si se repite parecida en dos revisiones seguidas
+  let eta = null, vAcerca = null;
   if (a && Number.isFinite(dN) && anterior && Number.isFinite(anterior.dNucleo) && anterior.tRadar && tRadar > anterior.tRadar) {
     const v = (anterior.dNucleo - dN) / ((tRadar - anterior.tRadar) / 3600000);
-    if (v >= 5 && dN > 3) eta = dN / v * 60;
-  }
+    if (v >= 5 && v <= 100) {
+      vAcerca = v;
+      const vAnt = anterior.vAcerca;
+      if (typeof vAnt === "number" && vAnt >= 5 && v <= vAnt * 2 && vAnt <= v * 2 && dN > 3) eta = dN / ((v + vAnt) / 2) * 60;
+    }
+  } else if (anterior && tRadar === anterior.tRadar) vAcerca = anterior.vAcerca;
   let nivel = "verde", titulo = "Sin tormentas cerca";
   if (a && a.encima >= 40) { nivel = "rojo"; titulo = "Tormenta fuerte encima tuyo"; }
   else if (rayo && rayo.km <= 8) { nivel = "rojo"; titulo = `Rayos a ${km(rayo.km)} km`; }
@@ -327,7 +335,7 @@ function decidir(a, rayosLista, lat, lon, anterior, tRadar) {
   if (Number.isFinite(dN)) partes.push(`Tormenta más cercana a ${km(dN)} km (${a.maxNucleo} dBZ)` + (eta !== null ? `, llegaría en ~${Math.round(eta)} min` : ""));
   if (rayo) partes.push(`rayo más cercano a ${km(rayo.km)} km`);
   if (!a) partes.push("sin datos del radar en tu zona");
-  return { nivel, titulo, cuerpo: partes.length ? partes.join(" · ") + "." : "Abrí la app para ver el radar.", dNucleo: dN, tRadar };
+  return { nivel, titulo, cuerpo: partes.length ? partes.join(" · ") + "." : "Abrí la app para ver el radar.", dNucleo: dN, tRadar, vAcerca };
 }
 
 // ---------- Avisos (Web Push sin contenido: el celular pide el texto después) ----------
@@ -594,7 +602,7 @@ export default {
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
 
     if (request.method === "GET" || request.method === "HEAD") {
-      if (url.pathname === "/") return texto("Mi Clima: intermediario funcionando (versión 5)" + (env.MI_CLIMA ? " · avisos listos" : " · falta conectar el KV MI_CLIMA") + (env.CODIGO ? " · con código de invitación" : ""), 200, cors);
+      if (url.pathname === "/") return texto("Mi Clima: intermediario funcionando (versión 6)" + (env.MI_CLIMA ? " · avisos listos" : " · falta conectar el KV MI_CLIMA") + (env.CODIGO ? " · con código de invitación" : ""), 200, cors);
       if (url.pathname === "/rayos") return rayos(cors);
       if (url.pathname === "/smn") return smn(url, cors);
       const ms = url.pathname.match(RUTA_SINARAME);
