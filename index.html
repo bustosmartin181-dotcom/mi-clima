@@ -99,6 +99,38 @@ nav.tabs button.on{color:var(--accent);font-weight:700}
 .chips{position:absolute;top:10px;right:10px;z-index:1001;display:flex;flex-direction:column;gap:6px;align-items:flex-end}
 .chip{background:rgba(255,255,255,.93);color:#1d2630;border:1px solid rgba(0,0,0,.25);border-radius:18px;padding:7px 11px;font-size:13px;font-weight:600;box-shadow:0 1px 4px rgba(0,0,0,.35)}
 .chip.on{background:#1565c0;color:#fff;border-color:#1565c0}
+/* Menú simple de capas */
+.menuCapas{background:rgba(255,255,255,.97);color:#1d2630;border-radius:14px;padding:8px;box-shadow:0 2px 10px rgba(0,0,0,.35);display:flex;flex-direction:column;gap:6px;width:210px}
+.opCapa{display:flex;flex-direction:column;align-items:flex-start;text-align:left;background:#f1f4f8;color:#1d2630;border:2px solid transparent;padding:9px 11px;border-radius:10px}
+.opCapa span{font-weight:700;font-size:15px}.opCapa small{font-size:12px;color:#5b6876}
+.opCapa.on{border-color:#1565c0;background:#e3ecfd}
+.masCapas summary{font-size:13px;color:#1565c0;padding:6px 4px}
+.masCapas .chip{display:block;width:100%;text-align:left;margin-top:6px;box-shadow:none}
+.masCapas .chip[hidden]{display:none}
+.mkZonda{font-size:22px;line-height:28px;width:30px;height:30px;text-align:center;border-radius:50%;background:rgba(239,108,0,.92);box-shadow:0 0 0 3px rgba(255,255,255,.85)}
+.mkZonda.ahora{animation:zondaLatido 1.2s ease-in-out infinite}
+.lblZonda{background:rgba(255,255,255,.92);border:0;font-weight:700;color:#bf360c;box-shadow:0 1px 3px rgba(0,0,0,.3)}
+/* Aviso intermitente de Zonda */
+.avisoZonda{display:flex;flex-direction:column;align-items:flex-start;text-align:left;gap:2px;width:calc(100% - 32px);margin:12px 16px 0;padding:12px 14px;border-radius:14px;background:var(--n-naranja);color:#fff;animation:zondaParpadeo 1.4s ease-in-out infinite}
+.avisoZonda[data-nivel="rojo"]{background:var(--n-rojo)}
+.avisoZonda[data-nivel="amarillo"]{background:#e0a000;color:#1d2630}
+.azTitulo{font-size:18px;font-weight:800}.azTexto{font-size:14px;line-height:1.4}.azPie{font-size:13px;font-weight:700;opacity:.9;margin-top:2px}
+@keyframes zondaParpadeo{50%{filter:brightness(1.25);box-shadow:0 0 0 4px rgba(255,152,0,.45)}}
+@keyframes zondaLatido{50%{transform:scale(1.18)}}
+/* Qué esperar hoy */
+.hoy{display:flex;gap:12px;align-items:flex-start;border-left:8px solid var(--n-gris)}
+.hoyIcono{font-size:42px;line-height:1}
+.hoyEtiqueta,.estadoEtiqueta{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;font-weight:600}
+.hoyTitulo{font-size:19px;font-weight:700;margin:2px 0 4px}
+.hoyTexto{font-size:15px;line-height:1.45}
+.hoyTexto div+div{margin-top:6px}
+#estado{cursor:pointer}
+#estado .estadoTitulo{font-size:16px;margin:2px 0 0}
+#estado:not(.abierto) .estadoDetalle,#estado:not(.abierto) .botones button:not([data-ir="radar"]):not(#btnReportar){display:none}
+#estado.abierto .verDet{display:none}
+.verMas summary{padding:2px 0}
+.verMas .sub{margin-top:16px;padding-top:12px;border-top:1px solid var(--border)}
+.opcRadar{margin-top:12px}
 .btnUbic{position:absolute;right:12px;bottom:34px;z-index:1001;width:54px;height:54px;border-radius:16px;padding:0;background:#fff;border:1px solid rgba(0,0,0,.2);box-shadow:0 2px 6px rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center}
 .btnUbic span{display:block;width:30px;height:30px;border-radius:50%;background:#e3ecfd;position:relative}
 .btnUbic span::after{content:"";position:absolute;left:8px;top:8px;width:14px;height:14px;border-radius:50%;background:#1a73e8}
@@ -165,7 +197,7 @@ nav.tabs button.on{color:var(--accent);font-weight:700}
 #hojaReporte{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:2000;display:none;align-items:flex-end}
 #hojaReporte.abierta{display:flex}
 nav.tabs button{font-size:11px}
-@media (prefers-reduced-motion: reduce){.rayo.nuevo svg,.rayo.nuevo::before,.rayo.nuevo::after,.mapaCaja.destello::after{animation:none}}
+@media (prefers-reduced-motion: reduce){.avisoZonda,.mkZonda.ahora{animation:none}.rayo.nuevo svg,.rayo.nuevo::before,.rayo.nuevo::after,.mapaCaja.destello::after{animation:none}}
 </style>
 </head>
 <body>
@@ -184,7 +216,23 @@ nav.tabs button{font-size:11px}
     <div id="sensacion" class="small"></div>
   </div>
 
+  <button id="avisoZonda" class="avisoZonda" type="button" data-nivel="naranja" style="display:none">
+    <span class="azTitulo" id="avisoZondaTitulo">⚠️ Viento Zonda en camino</span>
+    <span class="azTexto" id="avisoZondaTexto"></span>
+    <span class="azPie">Tocá para verlo en el mapa ›</span>
+  </button>
+
+  <div class="panel hoy" id="panelHoy" data-nivel="gris">
+    <div class="hoyIcono" id="hoyIcono">⏳</div>
+    <div>
+      <div class="hoyEtiqueta">Qué esperar hoy</div>
+      <div class="hoyTitulo" id="hoyTitulo">Cargando el pronóstico…</div>
+      <div class="hoyTexto" id="hoyTexto"></div>
+    </div>
+  </div>
+
   <div class="panel" id="estado" data-nivel="gris">
+    <div class="estadoEtiqueta">Radar en este momento <span class="verDet">· tocá para ver el detalle</span></div>
     <p class="estadoTitulo">Revisando el radar…</p>
     <div class="estadoDetalle"></div>
     <div class="botones"><button class="sec chico" type="button" data-ir="radar">🛰️ Ver radar</button><button class="sec chico" type="button" data-ir="alarma">🔔 Alarma</button><button class="sec chico" type="button" id="btnVerTormentas">⛈️ Tormentas de la tarde y noche</button><button class="sec chico" type="button" id="btnEscuchar">🔊 Escuchar</button><button class="sec chico" type="button" id="btnReportar">📣 ¿Qué cae acá?</button></div>
@@ -197,30 +245,35 @@ nav.tabs button{font-size:11px}
     <div id="llegadaInfo" class="small"></div>
   </div>
 
-  <div class="panel" id="panelSmn">
-    <strong>Avisos oficiales del SMN</strong>
-    <div id="smnLista" class="small">Cargando…</div>
-  </div>
-
-  <div class="panel" id="panelAlertas">
-    <strong>Alertas del pronóstico (próximas 48 h)</strong>
-    <div id="alertasPron" style="margin-top:4px" class="small">Cargando…</div>
-  </div>
-
   <div class="panel">
     <strong>Próximas 24 horas</strong>
     <div id="horas" class="horas"></div>
   </div>
 
-  <div class="panel">
+  <details class="panel verMas" id="verMas">
+    <summary>Ver más: avisos del SMN, alertas, detalles y calidad del aire</summary>
+  <div class="sub" id="panelSmn">
+    <strong>Avisos oficiales del SMN</strong>
+    <div id="smnLista" class="small">Cargando…</div>
+  </div>
+
+  <div class="sub" id="panelAlertas">
+    <strong>Alertas del pronóstico (próximas 48 h)</strong>
+    <div id="alertasPron" style="margin-top:4px" class="small">Cargando…</div>
+  </div>
+
+
+  <div class="sub">
+    <strong>Detalles de ahora</strong>
     <div id="detalles" class="grilla"></div>
     <div id="actualizado" class="small"></div>
   </div>
 
-  <div class="panel" id="panelAire">
+  <div class="sub" id="panelAire">
     <strong>Calidad del aire</strong>
     <div id="aire" class="small">Cargando…</div>
   </div>
+  </details>
 </section>
 
 <!-- ============ RADAR ============ -->
@@ -228,12 +281,21 @@ nav.tabs button{font-size:11px}
   <div class="mapaCaja" id="mapaCaja">
     <div id="map"></div>
     <div class="chips" role="group" aria-label="Capas del mapa">
-      <button id="chipSat" class="chip" type="button" aria-pressed="false">🛰️ Satélite</button>
-      <button id="chipNubes" class="chip" type="button" aria-pressed="false">☁️ Nubes</button>
-      <button id="chipViento" class="chip" type="button" aria-pressed="false">💨 Viento</button>
-      <button id="chipTormentas" class="chip" type="button" aria-pressed="false">⛈️ Tormentas (pronóstico)</button>
-      <button id="chipSatLluvia" class="chip" type="button" aria-pressed="false">🌧️ Lluvia satélite</button>
-      <button id="chipBrujula" class="chip" type="button" aria-pressed="false">🧭 Hacia dónde miro</button>
+      <button id="btnCapas" class="chip chipCapas" type="button" aria-expanded="false">🗂️ Capas ▾</button>
+      <div id="menuCapas" class="menuCapas" style="display:none">
+        <button type="button" class="opCapa" data-capa="lluvia"><span>🌧️ Lluvia</span><small>Solo el radar</small></button>
+        <button type="button" class="opCapa" data-capa="viento"><span>💨 Viento y Zonda</span><small>Viento animado y ráfagas</small></button>
+        <button type="button" class="opCapa" data-capa="nubes"><span>☁️ Nubes</span><small>Foto del satélite</small></button>
+        <details class="masCapas">
+          <summary>Más capas</summary>
+          <button id="chipSat" class="chip" type="button" aria-pressed="false">🛰️ Fondo satelital</button>
+          <button id="chipTormentas" class="chip" type="button" aria-pressed="false">⛈️ Tormentas (pronóstico)</button>
+          <button id="chipSatLluvia" class="chip" type="button" aria-pressed="false">🌧️ Lluvia por satélite</button>
+          <button id="chipBrujula" class="chip" type="button" aria-pressed="false">🧭 Hacia dónde miro</button>
+          <button id="chipNubes" class="chip" type="button" aria-pressed="false" hidden>☁️ Nubes</button>
+          <button id="chipViento" class="chip" type="button" aria-pressed="false" hidden>💨 Viento</button>
+        </details>
+      </div>
     </div>
     <button id="btnUbic" class="btnUbic" type="button" aria-label="Ir a mi ubicación"><span></span></button>
   </div>
@@ -291,17 +353,25 @@ nav.tabs button{font-size:11px}
     </div>
   </div>
   <div class="panel">
-    <div class="seg" role="group" aria-label="Fuente del radar">
-      <button id="srcMza" type="button" class="on">Radar Mendoza (HD)</button>
-      <button id="srcSin" type="button">Radares nacionales</button>
-      <button id="srcRv" type="button">RainViewer</button>
-    </div>
     <div class="row">
       <button id="btnPlay" type="button" aria-label="Pausar o reproducir">⏸</button>
       <input id="slider" type="range" min="0" max="0" value="0" aria-label="Elegir imagen del radar">
     </div>
     <div id="radarInfo" class="small">Buscando imágenes del radar…</div>
     <div id="notaZona" class="small" style="display:none"></div>
+    <div id="leyendaMza">
+      <div class="escala" style="background:linear-gradient(90deg,rgb(0,112,0),rgb(8,127,219) 30%,rgb(200,15,134) 55%,rgb(254,250,3) 75%,rgb(253,52,28))"></div>
+      <div class="escalaNum"><span>Lluvia débil</span><span>Moderada</span><span>Fuerte</span><span>Tormenta / granizo</span></div>
+    </div>
+    <div class="small">⚡ = rayo. Mirá hacia dónde se mueven las manchas en la animación.</div>
+    <details id="opcRadar" class="opcRadar">
+      <summary>⚙️ Opciones del radar</summary>
+      <div class="small" style="margin-bottom:6px">El radar se elige solo según dónde estés. Si querés, podés cambiarlo acá.</div>
+    <div class="seg" role="group" aria-label="Fuente del radar">
+      <button id="srcMza" type="button" class="on">Radar Mendoza (HD)</button>
+      <button id="srcSin" type="button">Radares nacionales</button>
+      <button id="srcRv" type="button">RainViewer</button>
+    </div>
     <label class="check" id="limpioWrap"><input type="checkbox" id="chkLimpio" checked> Radar limpio (sin el ruido de cerros y ciudad)</label>
     <label class="check" id="hailWrap"><input type="checkbox" id="chkHail"> Mostrar probabilidad de granizo</label>
     <label class="check"><input type="checkbox" id="chkRayos" checked> Mostrar rayos (últimos 15 min, con destello al caer)</label>
@@ -309,7 +379,7 @@ nav.tabs button{font-size:11px}
     <label class="check"><input type="checkbox" id="chkReportes" checked> Mostrar lo que reportan los usuarios (últimas 3 h)</label>
     <div id="reportesInfo" class="small"></div>
     <label class="check"><input type="checkbox" id="chkTray" checked> Mostrar hacia dónde va la tormenta más cercana (+30 a +120 min)</label>
-    <div class="small">Amarillo y rojo: lluvia fuerte o posible granizo. Mirá hacia dónde se mueven las manchas en la animación.</div>
+    </details>
   </div>
 </section>
 
@@ -554,12 +624,13 @@ async function cargarClima() {
   const l = lugarActual(), yo = ++pedidoClima;
   const clave = "miClimaClima:" + l.id;
   const guardado = leerLocal(clave);
+  cargarZondaRegional();
   if (guardado && guardado.datos) dibujarClima(guardado.datos, guardado.t); // se ve al instante, aunque no haya señal
   try {
     const url = "https://api.open-meteo.com/v1/forecast" +
       `?latitude=${l.lat.toFixed(4)}&longitude=${l.lon.toFixed(4)}` +
       "&current=temperature_2m,relative_humidity_2m,apparent_temperature,is_day,precipitation,weather_code,surface_pressure,wind_speed_10m,wind_direction_10m,wind_gusts_10m" +
-      "&hourly=temperature_2m,precipitation_probability,weather_code,is_day,wind_gusts_10m,precipitation,snowfall,relative_humidity_2m,wind_speed_10m,wind_direction_10m" +
+      "&hourly=temperature_2m,precipitation_probability,weather_code,is_day,wind_gusts_10m,precipitation,snowfall,relative_humidity_2m,wind_speed_10m,wind_direction_10m,cape" +
       "&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,sunrise,sunset,uv_index_max,wind_speed_10m_max,wind_gusts_10m_max" +
       "&timezone=auto&forecast_days=7";
     const r = await fetch(url);
@@ -578,6 +649,7 @@ async function cargarClima() {
 
 function dibujarClima(d, t) {
   const c = d.current, dia = d.daily, h = d.hourly;
+  ultimoPron = d;
   const ahoraTxt = tiempo(c.weather_code, c.is_day);
   const enZonaZonda = zonaZonda(d.latitude, d.longitude);
   const zondaAhora = enZonaZonda ? nivelZonda(c.wind_direction_10m, c.wind_gusts_10m, c.relative_humidity_2m) : 0;
@@ -898,6 +970,228 @@ function nivelZonda(dir, raf, hum) {
   return 0;
 }
 
+// Zonda en la región: puntos donde suele empezar antes de bajar al llano (sur, Valle de Uco y alta montaña)
+const PUNTOS_ZONDA = [
+  ["Malargüe", -35.475, -69.585], ["San Rafael", -34.617, -68.330], ["Valle de Uco", -33.577, -69.015], ["Tupungato", -33.370, -69.150],
+  ["Potrerillos", -32.957, -69.198], ["Uspallata", -32.592, -69.346], ["San Juan", -31.537, -68.536]
+];
+const HORAS_ZONDA = 12; // cuántas horas hacia adelante se mira
+let zondaReg = leerLocal("miClimaZondaReg"), pedidoZonda = 0, capaZonda = null;
+let ultimoPron = null, estadoRadar = null, smnLugar = [];
+function cercaDeCuyo(lat, lon) { return lat <= -30 && lat >= -37.5 && lon <= -66 && lon >= -70.8; }
+function indiceHoraActual(times) {
+  const ahora = Date.now();
+  for (let i = 0; i < times.length; i++) { const t = new Date(times[i]).getTime(); if (t <= ahora && ahora < t + 3600000) return i; }
+  const i = times.findIndex(x => new Date(x).getTime() >= ahora);
+  return i < 0 ? 0 : i;
+}
+function horaCorta(iso) {
+  const d = new Date(iso), hoy = new Date();
+  const h = String(iso).slice(11, 13).replace(/^0/, "") + " h";
+  if (d.toDateString() === hoy.toDateString()) return "las " + h;
+  const man = new Date(hoy.getTime() + 86400000);
+  return (d.toDateString() === man.toDateString() ? "mañana a las " : "el " + d.toLocaleDateString("es-AR", { weekday: "long" }) + " a las ") + h;
+}
+// Revisa los puntos de control y devuelve dónde hay (o va a haber) Zonda en las próximas horas
+function analizarPuntoZonda(nombre, lat, lon, h) {
+  if (!h || !h.time || !h.wind_direction_10m) return null;
+  const ini = indiceHoraActual(h.time), fin = Math.min(h.time.length, ini + HORAS_ZONDA + 1);
+  let p = null;
+  for (let i = ini; i < fin; i++) {
+    const n = nivelZonda(h.wind_direction_10m[i], h.wind_gusts_10m[i], h.relative_humidity_2m[i]);
+    if (!n) continue;
+    if (!p) p = { nombre, lat, lon, nivel: 0, ahora: i <= ini + 1, desde: h.time[i], raf: 0, dir: h.wind_direction_10m[i], hum: 100 };
+    p.nivel = Math.max(p.nivel, n);
+    if (h.wind_gusts_10m[i] > p.raf) { p.raf = h.wind_gusts_10m[i]; p.dir = h.wind_direction_10m[i]; }
+    p.hum = Math.min(p.hum, h.relative_humidity_2m[i]);
+  }
+  return p;
+}
+async function cargarZondaRegional() {
+  const l = lugarActual(), yo = ++pedidoZonda;
+  if (!cercaDeCuyo(l.lat, l.lon)) { zondaReg = null; dibujarAvisoZonda(); dibujarZondaMapa(); return; }
+  dibujarAvisoZonda(); dibujarZondaMapa(); // lo guardado se ve al instante
+  try {
+    const url = "https://api.open-meteo.com/v1/forecast" +
+      "?latitude=" + PUNTOS_ZONDA.map(p => p[1]).join(",") + "&longitude=" + PUNTOS_ZONDA.map(p => p[2]).join(",") +
+      "&hourly=wind_direction_10m,wind_gusts_10m,relative_humidity_2m&timezone=auto&forecast_days=2";
+    const r = await fetch(url);
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    let datos = await r.json();
+    if (!Array.isArray(datos)) datos = [datos];
+    if (yo !== pedidoZonda) return;
+    const puntos = [];
+    PUNTOS_ZONDA.forEach(([nombre, lat, lon], i) => { const p = datos[i] && analizarPuntoZonda(nombre, lat, lon, datos[i].hourly); if (p) puntos.push(p); });
+    zondaReg = { t: Date.now(), puntos };
+    guardarLocal("miClimaZondaReg", zondaReg);
+  } catch (e) {
+    if (yo !== pedidoZonda) return;
+    if (zondaReg && Date.now() - zondaReg.t > 3 * 3600000) zondaReg = null; // lo guardado ya es muy viejo
+  }
+  dibujarAvisoZonda(); dibujarZondaMapa(); dibujarHoy();
+}
+// Puntos con Zonda que no son tu propio lugar (a más de 20 km)
+function zondaLejos() {
+  if (!zondaReg || !zondaReg.puntos) return [];
+  const l = lugarActual();
+  return zondaReg.puntos.filter(p => kmEntre(p.lat, p.lon, l.lat, l.lon) > 20 && new Date(p.desde).getTime() < Date.now() + HORAS_ZONDA * 3600000);
+}
+function nivelColorZonda(lista) {
+  const raf = Math.max(...lista.map(p => p.raf)), niv = Math.max(...lista.map(p => p.nivel));
+  return raf >= 90 ? "rojo" : raf >= 70 || niv === 2 ? "naranja" : "amarillo";
+}
+function zondaEnMiLugar() {
+  const d = ultimoPron;
+  if (!d || !d.current || !zonaZonda(d.latitude, d.longitude)) return 0;
+  return nivelZonda(d.current.wind_direction_10m, d.current.wind_gusts_10m, d.current.relative_humidity_2m);
+}
+function dibujarAvisoZonda() {
+  const el = $("avisoZonda"), lista = zondaLejos();
+  if (!lista.length) { el.style.display = "none"; return; }
+  const soplando = lista.filter(p => p.ahora), proximos = lista.filter(p => !p.ahora).sort((a, b) => new Date(a.desde) - new Date(b.desde));
+  const nombres = arr => arr.length === 1 ? arr[0].nombre : arr.slice(0, -1).map(p => p.nombre).join(", ") + " y " + arr[arr.length - 1].nombre;
+  const fuerte = lista.reduce((a, b) => b.raf > a.raf ? b : a);
+  const yaAca = zondaEnMiLugar();
+  $("avisoZondaTitulo").textContent = yaAca ? "🌬️ Viento Zonda soplando" : soplando.length ? "⚠️ Viento Zonda en camino" : "⚠️ Viento Zonda en las próximas horas";
+  let txt = "";
+  if (soplando.length) txt = `Ya sopla en ${nombres(soplando)}.`;
+  if (proximos.length) txt += (txt ? " " : "") + `Se espera desde ${horaCorta(proximos[0].desde)} en ${proximos[0].nombre}` + (proximos.length > 1 ? ` y después en ${nombres(proximos.slice(1))}.` : ".");
+  txt += ` Ráfagas del ${direccion(fuerte.dir)} de hasta ${r0(fuerte.raf)} km/h y aire muy seco.` + (yaAca ? "" : " Podría bajar al llano, pero no siempre llega.");
+  $("avisoZondaTexto").textContent = txt;
+  el.dataset.nivel = nivelColorZonda(lista);
+  el.style.display = "";
+}
+function dibujarZondaMapa() {
+  if (!map || !capaZonda) return;
+  capaZonda.clearLayers();
+  const lista = zondaReg && zondaReg.puntos ? zondaReg.puntos : [];
+  for (const p of lista) {
+    const icono = L.divIcon({ className: "", html: `<div class="mkZonda${p.ahora ? " ahora" : ""}">🌬️</div>`, iconSize: [30, 30], iconAnchor: [15, 15] });
+    const m = L.marker([p.lat, p.lon], { icon: icono, zIndexOffset: 800 });
+    m.bindTooltip(p.nombre, { permanent: true, direction: "right", offset: [14, 0], className: "lblZonda" });
+    m.bindPopup(`<b>${p.nombre}: ${p.nivel === 2 ? "Zonda probable" : "posible Zonda"}</b><br>` +
+      (p.ahora ? "Soplando ahora" : `Desde ${horaCorta(p.desde)}`) + `<br>Ráfagas del ${direccion(p.dir)} de hasta ${r0(p.raf)} km/h<br>Humedad de apenas ${r0(p.hum)}%` +
+      `<br><span style="color:#5b6876;font-size:12px">Estimación con el pronóstico (Open-Meteo)</span>`);
+    m.on("click", e => L.DomEvent.stopPropagation(e));
+    capaZonda.addLayer(m);
+  }
+}
+// Al tocar el aviso: ir al mapa, prender el viento (ráfagas) y mostrar dónde sopla
+function irAZonda() {
+  const lista = zondaLejos();
+  mostrarTab("radar");
+  if (!map) return;
+  if (!vientoOn || !vientoRafagas) {
+    vientoOn = true; nubesOn = false; vientoRafagas = true;
+    guardarLocal("miClimaViento", true); guardarLocal("miClimaNubes", false);
+    aplicarNubes(false); aplicarViento(); marcarCapas();
+  }
+  dibujarZondaMapa();
+  setTimeout(() => {
+    map.invalidateSize();
+    const l = lugarActual(), pts = lista.map(p => [p.lat, p.lon]).concat([[l.lat, l.lon]]);
+    if (pts.length > 1) map.fitBounds(L.latLngBounds(pts).pad(0.25), { maxZoom: 9 });
+    const fuerte = lista.length ? lista.reduce((a, b) => b.raf > a.raf ? b : a) : null;
+    if (fuerte) capaZonda.eachLayer(m => { const ll = m.getLatLng(); if (ll.lat === fuerte.lat && ll.lng === fuerte.lon) m.openPopup(); });
+  }, 150);
+}
+$("avisoZonda").addEventListener("click", irAZonda);
+
+// =================== Qué esperar hoy (resumen simple) ===================
+// Junta el radar, el pronóstico, el Zonda y el SMN en una sola frase. Distingue Zonda de tormenta con la humedad y el CAPE.
+function dibujarHoy() {
+  const d = ultimoPron, el = $("panelHoy");
+  if (!d || !d.hourly || !d.hourly.time) return;
+  const h = d.hourly, l = lugarActual();
+  const ini = indiceHoraActual(h.time);
+  // hasta la medianoche, pero mirando como mínimo 6 horas
+  const finDia = new Date(); finDia.setHours(23, 59, 59, 0);
+  let fin = ini;
+  while (fin < h.time.length && (new Date(h.time[fin]).getTime() <= finDia.getTime() || fin < ini + 6)) fin++;
+  const enZona = zonaZonda(d.latitude, d.longitude);
+  const val = (arr, i) => arr && typeof arr[i] === "number" ? arr[i] : null;
+  let zonda = null, torm = null, lluvia = null, tMax = -Infinity, rafMax = 0, rafT = null, mmTotal = 0;
+  for (let i = ini; i < fin; i++) {
+    const cod = val(h.weather_code, i), prob = val(h.precipitation_probability, i), hum = val(h.relative_humidity_2m, i), cape = val(h.cape, i), mm = val(h.precipitation, i) || 0;
+    const t = val(h.temperature_2m, i), raf = val(h.wind_gusts_10m, i);
+    if (t !== null && t > tMax) tMax = t;
+    if (raf !== null && raf > rafMax) { rafMax = raf; rafT = h.time[i]; }
+    mmTotal += mm;
+    const nz = enZona ? nivelZonda(val(h.wind_direction_10m, i), raf, hum) : 0;
+    if (nz) {
+      if (!zonda) zonda = { desde: h.time[i], nivel: 0, raf: 0, dir: h.wind_direction_10m[i], hum: 100, ahora: i <= ini + 1 };
+      zonda.nivel = Math.max(zonda.nivel, nz); zonda.hum = Math.min(zonda.hum, hum);
+      if (raf > zonda.raf) { zonda.raf = raf; zonda.dir = h.wind_direction_10m[i]; }
+    }
+    const senalTorm = (cod !== null && cod >= 95) || (cape !== null && cape >= 1000 && prob !== null && prob >= 40);
+    if (senalTorm) {
+      if (!torm) torm = { desde: h.time[i], granizo: false, humMax: 0, mm: 0, prob: 0 };
+      torm.granizo = torm.granizo || cod > 95; torm.humMax = Math.max(torm.humMax, hum || 0); torm.mm += mm; torm.prob = Math.max(torm.prob, prob || 0);
+    }
+    if (!lluvia && ((prob !== null && prob >= 50) || (cod !== null && cod >= 51 && cod < 95))) lluvia = { desde: h.time[i], prob };
+  }
+  // Tormenta "seca": el modelo marca tormenta pero el aire está muy seco y casi no da lluvia -> viento y polvo, no agua
+  const tormSeca = torm && torm.humMax <= 30 && torm.mm < 0.5;
+  const smn = smnLugar && smnLugar.length ? smnLugar[0] : null;
+  const radarVisible = $("estado").style.display !== "none";
+  const lejos = zondaLejos();
+  let nivel = "verde", icono = d.current && d.current.is_day === 0 ? "🌙" : "☀️", titulo = "Tranquilo: sin lluvia ni viento fuerte";
+  const lineas = [];
+  if (radarVisible && estadoRadar && ORDEN[estadoRadar.nivel] >= ORDEN.naranja) {
+    nivel = estadoRadar.nivel; icono = "⛈️"; titulo = estadoRadar.titulo;
+    lineas.push("Lo está viendo el radar en este momento. Tocá abajo para ver el detalle.");
+  } else if (torm && !tormSeca) {
+    nivel = torm.granizo || (smn && colorSmn(smn) !== "amarillo") ? "naranja" : "amarillo"; icono = "⛈️";
+    titulo = (torm.granizo ? "Tormentas con posible granizo" : "Puede haber tormentas") + " desde " + horaCorta(torm.desde);
+    lineas.push("Hay humedad y la atmósfera está inestable: esta vez la tormenta es de verdad (lluvia, rayos y quizás granizo). Mirá el radar cuando se nuble.");
+  } else if (zonda) {
+    nivel = zonda.raf >= 90 ? "rojo" : zonda.raf >= 70 || zonda.nivel === 2 ? "naranja" : "amarillo"; icono = "🌬️";
+    titulo = (zonda.ahora ? "Viento Zonda ahora" : "Viento Zonda desde " + horaCorta(zonda.desde));
+    lineas.push(`Viento seco y caliente del ${direccion(zonda.dir)}, ráfagas de hasta ${r0(zonda.raf)} km/h y humedad de apenas ${r0(zonda.hum)}%. No va a llover: si el cielo se ve raro, es polvo.`);
+    if (torm || lluvia) lineas.push("Si otra app te marca tormenta o lluvia, es por el viento: con el aire tan seco lo más probable es viento y polvo, no agua.");
+  } else if (tormSeca) {
+    nivel = "amarillo"; icono = "🌤️"; titulo = "Inestable, pero seco";
+    lineas.push(`El pronóstico marca posibles tormentas desde ${horaCorta(torm.desde)}, pero el aire está muy seco (humedad de ${r0(torm.humMax)}% o menos): lo más probable es viento y nubes, sin lluvia. Si llega a caer algo, sería poco.`);
+  } else if (lluvia) {
+    nivel = "amarillo"; icono = "🌧️"; titulo = "Puede llover desde " + horaCorta(lluvia.desde);
+    if (typeof lluvia.prob === "number") lineas.push(`Probabilidad de lluvia de ${lluvia.prob}%.`);
+  } else if (rafMax >= 55) {
+    nivel = rafMax >= 70 ? "naranja" : "amarillo"; icono = "💨"; titulo = `Viento fuerte desde ${horaCorta(rafT)}`;
+    lineas.push(`Ráfagas de hasta ${r0(rafMax)} km/h, sin lluvia.`);
+  } else if (tMax >= 35) {
+    nivel = "amarillo"; icono = "🥵"; titulo = `Mucho calor: hasta ${r0(tMax)}°`;
+    lineas.push("Sin lluvia a la vista. Tomá agua y evitá el sol fuerte del mediodía.");
+  } else if (isFinite(tMax)) lineas.push(`Máxima de ${r0(tMax)}°.`);
+  if (lejos.length && !zonda) {
+    lineas.push(`🌬️ Ojo: hay Zonda en ${lejos.map(p => p.nombre).join(", ")}. Por ahora no acá; mirá el aviso de arriba.`);
+    if (nivel === "verde") nivel = "amarillo";
+  }
+  if (smn) {
+    lineas.push(`📢 El SMN tiene un aviso ${colorSmn(smn)} por ${String(smn.ev || "").toLowerCase()} para ${l.nombre}. Está en "Ver más".`);
+    if (ORDEN[colorSmn(smn)] > ORDEN[nivel]) nivel = colorSmn(smn);
+  }
+  el.dataset.nivel = nivel;
+  $("hoyIcono").textContent = icono;
+  $("hoyTitulo").textContent = titulo;
+  const cont = $("hoyTexto"); cont.textContent = "";
+  for (const t of lineas) { const div = document.createElement("div"); div.textContent = t; cont.appendChild(div); }
+  dibujarAvisoZonda();
+}
+$("estado").addEventListener("click", e => { if (!e.target.closest("button")) $("estado").classList.toggle("abierto"); });
+
+// Capas del mapa simplificadas: Lluvia, Viento y Zonda, o Nubes
+function abrirMenuCapas(abrir) {
+  $("menuCapas").style.display = abrir ? "" : "none";
+  $("btnCapas").setAttribute("aria-expanded", String(abrir));
+  $("btnCapas").textContent = abrir ? "🗂️ Capas ▴" : "🗂️ Capas ▾";
+}
+function elegirCapa(capa) {
+  vientoOn = capa === "viento"; nubesOn = capa === "nubes";
+  if (vientoOn) vientoRafagas = true;
+  guardarLocal("miClimaViento", vientoOn); guardarLocal("miClimaNubes", nubesOn);
+  aplicarNubes(false); aplicarViento(); marcarCapas();
+}
+
 // =================== Calidad del aire ===================
 const CATEGORIAS_AIRE = [[20, "Buena", "#2e7d32"], [40, "Aceptable", "#7cb342"], [60, "Moderada", "#f9a825"], [80, "Mala", "#ef6c00"], [100, "Muy mala", "#c62828"], [Infinity, "Extremadamente mala", "#6a1b9a"]];
 let pedidoAire = 0;
@@ -1090,6 +1384,8 @@ function mostrarEstado(nivel, titulo, lineas) {
     cont.textContent = "";
     for (const l of lineas) { const div = document.createElement("div"); div.textContent = l; cont.appendChild(div); }
   }
+  estadoRadar = { nivel, titulo };
+  dibujarHoy();
 }
 function rayoMasCercano(lat, lon, ventanaMs) {
   const ahora = Date.now();
@@ -1726,7 +2022,7 @@ async function verMendoza(permitirCambio) {
   if (fuente !== "mza") return;
   if (!mzaFrames.length) {
     if (permitirCambio) { radarAuto = true; await verSinarame(); avisoRadar("El radar de Mendoza no tiene imágenes de los últimos 40 minutos: muestro los radares nacionales (SINARAME)."); }
-    else { info.textContent = ""; avisoRadar("El radar de Mendoza no tiene imágenes de los últimos 40 minutos. Probá más tarde o usá RainViewer."); }
+    else { info.textContent = ""; avisoRadar("El radar de Mendoza no tiene imágenes de los últimos 40 minutos. Probá más tarde o elegí otro radar en ⚙️ Opciones del radar."); }
     evaluarAlarma();
     return;
   }
@@ -1741,6 +2037,7 @@ async function verRainViewer() {
   mostrar(Math.max(0, rvFrames.filter(f => !f.futuro).length - 1));
 }
 function marcarBotones() {
+  $("leyendaMza").style.display = fuente === "mza" ? "" : "none";
   $("srcMza").classList.toggle("on", fuente === "mza");
   $("srcRv").classList.toggle("on", fuente === "rv");
   $("srcSin").classList.toggle("on", fuente === "sin");
@@ -2236,6 +2533,8 @@ function aplicarViento() {
   }
 }
 function marcarCapas() {
+  const modo = vientoOn ? "viento" : nubesOn ? "nubes" : "lluvia";
+  document.querySelectorAll(".opCapa").forEach(b => b.classList.toggle("on", b.dataset.capa === modo));
   for (const [id, on] of [["chipSat", fondoSat], ["chipNubes", nubesOn], ["chipViento", vientoOn], ["chipSatLluvia", satLluviaOn], ["chipTormentas", tormOn]]) { $(id).classList.toggle("on", on); $(id).setAttribute("aria-pressed", String(on)); }
   $("panelCapas").style.display = nubesOn || vientoOn || satLluviaOn || tormOn ? "" : "none";
   $("panelTormentas").style.display = tormOn ? "" : "none";
@@ -2255,6 +2554,9 @@ function iniciarCapas() {
   aplicarFondo(); aplicarNubes(false); aplicarViento(); marcarCapas();
   map.on("moveend", () => { if (vientoOn) programarViento(); if (fuente === "sin") { clearTimeout(sinMoverTimer); sinMoverTimer = setTimeout(() => { const ids = sinRadaresVisibles().map(r => r[0]); if (ids.some(id => !sinCapas.has(id) && !(sinCargados.get(id) && !sinCargados.get(id).t0))) cargarSinarame(false); }, 1200); } });
   map.on("click", tocarMapaViento);
+  $("btnCapas").addEventListener("click", () => abrirMenuCapas($("menuCapas").style.display === "none"));
+  document.querySelectorAll(".opCapa").forEach(b => b.addEventListener("click", () => { elegirCapa(b.dataset.capa); abrirMenuCapas(false); }));
+  map.on("click", () => abrirMenuCapas(false));
   $("chipSat").addEventListener("click", () => { fondoSat = !fondoSat; guardarLocal("miClimaFondoSat", fondoSat); aplicarFondo(); marcarCapas(); });
   $("chipNubes").addEventListener("click", () => { nubesOn = !nubesOn; guardarLocal("miClimaNubes", nubesOn); aplicarNubes(false); marcarCapas(); });
   $("escalaSatLluvia").style.background = "linear-gradient(90deg," + PALETA_SAT.filter((x, i) => i % 2 === 0 || i > 10).map(([c]) => `rgb(${c.join(",")})`).join(",") + ")";
@@ -2786,6 +3088,7 @@ function dibujarSmn(soloGuardados) {
   }
   const orden = { rojo: 3, naranja: 2, amarillo: 1 };
   lista.sort((a, b) => orden[colorSmn(b)] - orden[colorSmn(a)] || Date.parse(a.on) - Date.parse(b.on));
+  smnLugar = lista; dibujarHoy();
   if (!soloGuardados) el.textContent = "";
   if (!lista.length) {
     if (!soloGuardados) { el.className = "small"; el.textContent = `✅ El SMN no tiene avisos vigentes para ${l.nombre}.`; }
@@ -3164,6 +3467,8 @@ async function iniciar() {
   map = L.map("map").setView([pos.lat, pos.lon], guardada ? 10 : 8);
   iniciarCapas();
   capaRayos = L.layerGroup().addTo(map);
+  capaZonda = L.layerGroup().addTo(map);
+  dibujarZondaMapa();
   ponerMarcador();
   actualizarCabecera();
   mostrarOcultarAlarmaAhora();
