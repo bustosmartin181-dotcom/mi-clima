@@ -1,7 +1,7 @@
 {
   "name": "Mi Clima",
   "short_name": "Mi Clima",
-  "description": "Radar de Mendoza en alta definición, rayos y alarma de tormentas.",
+  "description": "Mi Clima, de Martín Bustos: radar de Mendoza en alta definición, rayos, alarma de tormentas y avisos de viento Zonda.",
   "lang": "es-AR",
   "start_url": "./",
   "scope": "./",

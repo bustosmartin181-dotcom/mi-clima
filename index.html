@@ -4,6 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#1565c0">
+<meta name="author" content="Martín Bustos">
+<meta name="description" content="Mi Clima, app creada por Martín Bustos (Mendoza): radar, rayos, avisos de tormenta y de viento Zonda.">
 <title>Mi Clima</title>
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icono-192.png">
@@ -131,6 +133,9 @@ nav.tabs button.on{color:var(--accent);font-weight:700}
 .verMas summary{padding:2px 0}
 .verMas .sub{margin-top:16px;padding-top:12px;border-top:1px solid var(--border)}
 .opcRadar{margin-top:12px}
+.firma{text-align:center;font-size:13px;color:var(--muted);margin:18px 16px 8px}
+.autor{text-align:center;line-height:1.5}
+.autorTitulo{font-size:20px;font-weight:700;margin-bottom:2px}
 .btnUbic{position:absolute;right:12px;bottom:34px;z-index:1001;width:54px;height:54px;border-radius:16px;padding:0;background:#fff;border:1px solid rgba(0,0,0,.2);box-shadow:0 2px 6px rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center}
 .btnUbic span{display:block;width:30px;height:30px;border-radius:50%;background:#e3ecfd;position:relative}
 .btnUbic span::after{content:"";position:absolute;left:8px;top:8px;width:14px;height:14px;border-radius:50%;background:#1a73e8}
@@ -274,6 +279,7 @@ nav.tabs button{font-size:11px}
     <div id="aire" class="small">Cargando…</div>
   </div>
   </details>
+  <p class="firma">Mi Clima · creada por <b>Martín Bustos</b> · Mendoza</p>
 </section>
 
 <!-- ============ RADAR ============ -->
@@ -427,6 +433,11 @@ nav.tabs button{font-size:11px}
       <div class="small">Los modelos sirven para planificar el día. Para saber si te agarra una tormenta en la próxima hora, mirá el radar.</div>
       <div id="forecast" class="small">Abrí esta sección para cargar la comparación.</div>
     </details>
+  </div>
+  <div class="panel autor">
+    <div class="autorTitulo">🌤️ Mi Clima</div>
+    <div>Creada por <b>Martín Bustos</b>, Mendoza, Argentina.</div>
+    <div class="small">Idea, diseño y pruebas: Martín Bustos.</div>
   </div>
   <div class="panel small">
     Pronóstico: Open-Meteo (CC BY 4.0). Radar y rayos: Dirección de Agricultura y Contingencias Climáticas, Gobierno de Mendoza
