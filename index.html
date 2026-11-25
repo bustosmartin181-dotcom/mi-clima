@@ -291,7 +291,7 @@ nav.tabs button{font-size:11px}
           <button id="chipSat" class="chip" type="button" aria-pressed="false">🛰️ Fondo satelital</button>
           <button id="chipTormentas" class="chip" type="button" aria-pressed="false">⛈️ Tormentas (pronóstico)</button>
           <button id="chipSatLluvia" class="chip" type="button" aria-pressed="false">🌧️ Lluvia por satélite</button>
-          <button id="chipBrujula" class="chip" type="button" aria-pressed="false">🧭 Hacia dónde miro</button>
+          <button id="chipBrujula" class="chip" type="button" aria-pressed="false">🧭 Hacia dónde miro (brújula)</button>
           <button id="chipNubes" class="chip" type="button" aria-pressed="false" hidden>☁️ Nubes</button>
           <button id="chipViento" class="chip" type="button" aria-pressed="false" hidden>💨 Viento</button>
         </details>
@@ -582,6 +582,8 @@ function mostrarTab(nombre) {
   tabActual = nombre;
   document.querySelectorAll(".tab").forEach(s => s.classList.toggle("activa", s.id === "tab-" + nombre));
   document.querySelectorAll("nav.tabs button").forEach(b => b.classList.toggle("on", b.dataset.tab === nombre));
+  if (nombre === "radar" && brujulaAuto && !brujulaOn && map) activarBrujula(true);
+  if (nombre !== "radar" && brujulaOn) apagarBrujula();
   if (nombre === "radar" && map) setTimeout(() => { map.invalidateSize(); if (vientoOn) programarViento(100); if (tormOn) programarTormentas(100); }, 50);
   if (nombre === "viaje") iniciarViaje();
   window.scrollTo(0, 0);
@@ -972,7 +974,7 @@ function nivelZonda(dir, raf, hum) {
 
 // Zonda en la región: puntos donde suele empezar antes de bajar al llano (sur, Valle de Uco y alta montaña)
 const PUNTOS_ZONDA = [
-  ["Malargüe", -35.475, -69.585], ["San Rafael", -34.617, -68.330], ["Valle de Uco", -33.577, -69.015], ["Tupungato", -33.370, -69.150],
+  ["Malargüe", -35.475, -69.585], ["San Rafael", -34.617, -68.330], ["Tunuyán", -33.577, -69.015], ["Tupungato", -33.370, -69.150],
   ["Potrerillos", -32.957, -69.198], ["Uspallata", -32.592, -69.346], ["San Juan", -31.537, -68.536]
 ];
 const HORAS_ZONDA = 12; // cuántas horas hacia adelante se mira
@@ -2827,6 +2829,7 @@ function alOrientar(e) {
   if (!x) return;
   ultimoEventoBrujula = Date.now();
   rumboCrudo = x.rumbo; precision = x.precision;
+  if (brujulaOn && $("panelBrujula").style.display === "none") $("panelBrujula").style.display = "";
   if (rumboSuave === null) rumboSuave = rumboCrudo;
   else { const dif = ((rumboCrudo - rumboSuave + 540) % 360) - 180; rumboSuave = (rumboSuave + dif * 0.25 + 360) % 360; }
   if (!dibujoPendiente) { dibujoPendiente = true; requestAnimationFrame(() => { dibujoPendiente = false; dibujarCono(); }); }
@@ -2911,12 +2914,23 @@ function queHayEnEsaDireccion() {
   if (nRayos) lineas.push(`⚡ ${nRayos} rayo${nRayos === 1 ? "" : "s"} en esa dirección en los últimos 15 min (el más cerca, a ${km(rayoCerca)} km).`);
   const rep = reportesMapa.filter(r => { const d = kmEntre(pos.lat, pos.lon, r.lat, r.lon); return d <= SECTOR_KM && anguloEntre(rumboHacia(pos.lat, pos.lon, r.lat, r.lon), rumbo) <= SECTOR_ANCHO; });
   if (rep.length) lineas.push(`📣 ${rep.length} reporte${rep.length === 1 ? "" : "s"} de usuarios en esa dirección: ${[...new Set(rep.map(r => (TIPOS_REPORTE[r.tipo] || ["", ""])[1]))].join(", ")}.`);
+  if (zondaReg && zondaReg.puntos) {
+    const z = zondaReg.puntos.filter(p => { const d = kmEntre(pos.lat, pos.lon, p.lat, p.lon); return d > 15 && d <= 400 && anguloEntre(rumboHacia(pos.lat, pos.lon, p.lat, p.lon), rumbo) <= 25; });
+    if (z.length) lineas.push("🌬️ Para ese lado hay Zonda: " + z.map(p => `${p.nombre} (${p.ahora ? "soplando" : "desde " + horaCorta(p.desde)}, ${km(kmEntre(pos.lat, pos.lon, p.lat, p.lon))} km)`).join(", ") + ".");
+  }
   if (precision !== null && precision > 30) lineas.push("⚠ La brújula está imprecisa: hacé un 8 en el aire con el celular.");
   el.textContent = "";
   for (const l of lineas) { const d = document.createElement("div"); d.textContent = l; d.style.marginTop = "4px"; el.appendChild(d); }
 }
-async function activarBrujula() {
-  if (brujulaOn) { apagarBrujula(); return; }
+// La brújula se prende sola al abrir el mapa (si no la apagaste con el botón 🧭) y se apaga al salir del mapa
+let brujulaAuto = leerLocal("miClimaBrujulaAuto") !== false;
+function tocarBotonBrujula() {
+  brujulaAuto = !brujulaOn;
+  guardarLocal("miClimaBrujulaAuto", brujulaAuto);
+  if (brujulaOn) apagarBrujula(); else activarBrujula(false);
+}
+async function activarBrujula(auto) {
+  if (brujulaOn) return;
   brujulaPermiso = "granted";
   try {
     if (typeof DeviceOrientationEvent !== "undefined" && typeof DeviceOrientationEvent.requestPermission === "function")
@@ -2926,17 +2940,18 @@ async function activarBrujula() {
   brujulaOn = true;
   window.addEventListener("deviceorientationabsolute", alOrientar);
   window.addEventListener("deviceorientation", alOrientar);
-  $("panelBrujula").style.display = "";
+  // prendida sola: el panel aparece recién cuando la brújula del celular responde (en una compu no aparece)
+  $("panelBrujula").style.display = auto ? "none" : "";
   $("chipBrujula").classList.add("on"); $("chipBrujula").setAttribute("aria-pressed", "true");
-  // centra el mapa en vos y sigue tu ubicación mientras la brújula está prendida
-  if (map) map.setView([pos.lat, pos.lon], Math.max(map.getZoom(), 9));
+  // tocando el botón: centra el mapa en vos. Prendida sola: no mueve el mapa
+  if (map && !auto) map.setView([pos.lat, pos.lon], Math.max(map.getZoom(), 9));
   if (navigator.geolocation) vigilaBrujulaGps = navigator.geolocation.watchPosition(p => {
     pos = { lat: p.coords.latitude, lon: p.coords.longitude }; guardarUbicacion(); ponerMarcador(); dibujarCono();
   }, () => {}, { enableHighAccuracy: true, maximumAge: 15000, timeout: 30000 });
   clearInterval(timerBrujula);
   timerBrujula = setInterval(queHayEnEsaDireccion, 1000);
   queHayEnEsaDireccion();
-  if (brujulaPermiso !== "granted") $("brujulaInfo").textContent = "No me diste permiso para usar la brújula (sensores de movimiento). Revisá los permisos del sitio en el navegador y volvé a tocar 🧭.";
+  if (brujulaPermiso !== "granted" && !auto) $("brujulaInfo").textContent = "No me diste permiso para usar la brújula (sensores de movimiento). Revisá los permisos del sitio en el navegador y volvé a tocar 🧭.";
 }
 function apagarBrujula() {
   brujulaOn = false;
@@ -3388,7 +3403,7 @@ async function cargarPasos() {
 }
 
 // ---- Eventos de las funciones nuevas ----
-$("chipBrujula").addEventListener("click", activarBrujula);
+$("chipBrujula").addEventListener("click", tocarBotonBrujula);
 // Botón "mi ubicación" (el punto azul de abajo a la derecha, como en Google Maps)
 $("btnUbic").addEventListener("click", () => {
   const btn = $("btnUbic");

@@ -1,4 +1,4 @@
-// Mi Clima - intermediario (Cloudflare Worker) - versión 6
+// Mi Clima - intermediario (Cloudflare Worker) - versión 7
 // 1) Deja que la app lea del sitio de Contingencias Climáticas de Mendoza:
 //      /rayos                              -> rayos del satélite (solo zona Mendoza)
 //      /radar/AAAAMMDD/HHMMSS_dbz.png      -> imagen del radar
@@ -17,6 +17,10 @@
 // 5) (versión 5) Radares nacionales SINARAME (información oficial, radares.hidricosargentina.gob.ar):
 //      /sinarame/RMA19/AAAAMMDDHHMM00.png -> imagen de un radar (hora argentina, una cada 10 minutos)
 //    Cada imagen se guarda un día en la caché de Cloudflare, para no pedirle de más al servidor oficial.
+// 6) (versión 7) Avisos de viento Zonda: una vez por hora revisa el pronóstico (Open-Meteo) en Malargüe,
+//    San Rafael, Tunuyán, Tupungato, Potrerillos, Uspallata, San Juan y en la ubicación de cada celular.
+//    Avisa cuando el Zonda empieza a soplar en un lugar nuevo, cuando se espera en tu zona y cuando llega.
+//      /zonda               -> último resultado de la revisión (para ver que funciona)
 
 const ORIGEN = "https://www2.contingencias.mendoza.gov.ar";
 const APP = "https://bustosmartin181-dotcom.github.io/mi-clima/";
@@ -533,6 +537,128 @@ async function revisar(env, momento, intervaloMin) {
   return { suscripciones: lista.length, revisados: lote.length, guardo: cambio };
 }
 
+// ---------- Viento Zonda (estimación con el pronóstico de Open-Meteo, igual que en la app) ----------
+const PUNTOS_ZONDA = [
+  ["Malargüe", -35.475, -69.585], ["San Rafael", -34.617, -68.330], ["Tunuyán", -33.577, -69.015], ["Tupungato", -33.370, -69.150],
+  ["Potrerillos", -32.957, -69.198], ["Uspallata", -32.592, -69.346], ["San Juan", -31.537, -68.536]
+];
+const ZONDA_ENTRE_AVISOS_MS = 2 * 3600000; // como máximo un aviso de "dónde sopla" cada 2 horas por celular
+function nivelZonda(dir, raf, hum) {
+  if (typeof dir !== "number" || typeof raf !== "number" || typeof hum !== "number") return 0;
+  if (dir < 235 || dir > 350) return 0;          // tiene que venir del oeste o noroeste
+  if (hum <= 20 && raf >= 55) return 2;
+  if (hum <= 30 && raf >= 40) return 1;
+  return 0;
+}
+function enCuyo(lat, lon) { return lat <= -30 && lat >= -37.5 && lon <= -66 && lon >= -70.8; }
+const DIRS = ["norte", "noreste", "este", "sudeste", "sur", "sudoeste", "oeste", "noroeste"];
+function direccion(g) { return DIRS[Math.round(((g % 360) + 360) % 360 / 45) % 8]; }
+// Las horas de Open-Meteo vienen en hora local del lugar (utc_offset_seconds); se pasan a milisegundos UTC
+function msDeHora(iso, offsetSeg) { return Date.parse(iso + ":00Z") - offsetSeg * 1000; }
+function textoHora(ms, ahora) {
+  const loc = new Date(ms - 3 * 3600000), hoy = new Date(ahora - 3 * 3600000);   // hora argentina (UTC-3)
+  const dias = Math.round((Date.UTC(loc.getUTCFullYear(), loc.getUTCMonth(), loc.getUTCDate()) - Date.UTC(hoy.getUTCFullYear(), hoy.getUTCMonth(), hoy.getUTCDate())) / 86400000);
+  const h = loc.getUTCHours() + " h";
+  return dias === 0 ? "hoy a las " + h : dias === 1 ? "mañana a las " + h : "en " + dias + " días, a las " + h;
+}
+// Analiza un lugar: ¿sopla ahora? ¿desde cuándo se espera en las próximas 30 horas?
+function zondaEn(d, ahora) {
+  const h = d && d.hourly;
+  if (!h || !h.time) return null;
+  const off = d.utc_offset_seconds || 0;
+  let r = null;
+  for (let i = 0; i < h.time.length; i++) {
+    const t = msDeHora(h.time[i], off);
+    if (t + 3600000 <= ahora || t > ahora + 30 * 3600000) continue;
+    const n = nivelZonda(h.wind_direction_10m[i], h.wind_gusts_10m[i], h.relative_humidity_2m[i]);
+    if (!n) { if (r) break; continue; }      // solo el primer episodio (horas seguidas)
+    if (!r) r = { ahora: t <= ahora, desde: t, raf: 0, dir: h.wind_direction_10m[i], hum: 100, nivel: 0 };
+    r.nivel = Math.max(r.nivel, n); r.hum = Math.min(r.hum, h.relative_humidity_2m[i]);
+    if (h.wind_gusts_10m[i] > r.raf) { r.raf = h.wind_gusts_10m[i]; r.dir = h.wind_direction_10m[i]; }
+  }
+  return r;
+}
+function listaNombres(a) { return a.length === 1 ? a[0] : a.slice(0, -1).join(", ") + " y " + a[a.length - 1]; }
+async function pronosticoZonda(lugares, pedir) {
+  const url = "https://api.open-meteo.com/v1/forecast?latitude=" + lugares.map(l => l.lat.toFixed(3)).join(",") +
+    "&longitude=" + lugares.map(l => l.lon.toFixed(3)).join(",") +
+    "&hourly=wind_direction_10m,wind_gusts_10m,relative_humidity_2m&timezone=auto&forecast_days=3";
+  const r = await (pedir || fetch)(url, { headers: { "User-Agent": "MiClima/7 (app personal)" } });
+  if (!r.ok) throw new Error("Open-Meteo respondió " + r.status);
+  const d = await r.json();
+  return Array.isArray(d) ? d : [d];
+}
+// Decide qué avisarle a un celular. Devuelve { aviso: {titulo, cuerpo} | null, estado nuevo }
+function decidirZonda(s, enMiZona, puntos, est, ahora) {
+  est = { avisados: [], ultimo: 0, acaAvisado: 0, pronAvisado: 0, ...(est || {}) };
+  const soplando = puntos.filter(p => p.z && p.z.ahora && kmEntre(p.lat, p.lon, s.lat, s.lon) > 20);
+  // cuando deja de soplar en un lugar, se olvida, así el próximo episodio se vuelve a avisar
+  est.avisados = est.avisados.filter(n => soplando.some(p => p.nombre === n));
+  let aviso = null;
+  const seguia = est.acaAhora;
+  est.acaAhora = !!(enMiZona && enMiZona.ahora);
+  if (enMiZona && enMiZona.ahora) {
+    if (ahora - est.acaAvisado > 6 * 3600000) {
+      aviso = { titulo: seguia ? "🌬️ Sigue el Zonda en tu zona" : "🌬️ Viento Zonda en tu zona", cuerpo: `Está soplando Zonda donde estás: ráfagas del ${direccion(enMiZona.dir)} de hasta ${Math.round(enMiZona.raf)} km/h y humedad de ${Math.round(enMiZona.hum)}%. Cerrá ventanas y cuidado con el polvo y las ramas.` };
+      est.acaAvisado = ahora; est.pronAvisado = ahora;
+    }
+  } else {
+    const nuevos = soplando.filter(p => !est.avisados.includes(p.nombre));
+    if (nuevos.length && ahora - est.ultimo >= ZONDA_ENTRE_AVISOS_MS) {
+      const fuerte = soplando.reduce((a, b) => b.z.raf > a.z.raf ? b : a);
+      const yaAntes = soplando.filter(p => est.avisados.includes(p.nombre)).map(p => p.nombre);
+      let cuerpo = (yaAntes.length ? `Ahora también en ${listaNombres(nuevos.map(p => p.nombre))} (seguía en ${listaNombres(yaAntes)}).` : `Está soplando en ${listaNombres(nuevos.map(p => p.nombre))}.`) +
+        ` Ráfagas del ${direccion(fuerte.z.dir)} de hasta ${Math.round(fuerte.z.raf)} km/h.`;
+      if (enMiZona && !enMiZona.ahora) cuerpo += ` En tu zona se espera ${textoHora(enMiZona.desde, ahora)}.`;
+      else cuerpo += " Por ahora no se espera en tu zona, pero puede bajar al llano.";
+      aviso = { titulo: "🌬️ Zonda soplando en " + listaNombres(nuevos.map(p => p.nombre)), cuerpo };
+      est.avisados = [...new Set([...est.avisados, ...nuevos.map(p => p.nombre)])];
+      est.ultimo = ahora;
+      if (enMiZona) est.pronAvisado = ahora;
+    } else if (enMiZona && !enMiZona.ahora && ahora - est.pronAvisado > 12 * 3600000) {
+      aviso = { titulo: "🌬️ Zonda pronosticado en tu zona", cuerpo: `Se espera viento Zonda ${textoHora(enMiZona.desde, ahora)}: ráfagas del ${direccion(enMiZona.dir)} de hasta ${Math.round(enMiZona.raf)} km/h y aire muy seco.` +
+        (soplando.length ? ` Ya sopla en ${listaNombres(soplando.map(p => p.nombre))}.` : "") };
+      est.pronAvisado = ahora;
+    }
+  }
+  return { aviso, est };
+}
+async function revisarZonda(env, pedir, forzar) {
+  const ahora = Date.now();
+  const anterior = await env.MI_CLIMA.get("zondaResumen", "json");
+  if (!forzar && anterior && anterior.revisado && ahora - anterior.revisado < 50 * 60000) return anterior; // una vez por hora
+  try { return await revisarZondaAhora(env, pedir, ahora); }
+  catch (e) {
+    const r = { ...(anterior || {}), revisado: ahora, error: String(e && e.message || e) };
+    await env.MI_CLIMA.put("zondaResumen", JSON.stringify(r));
+    return r;
+  }
+}
+async function revisarZondaAhora(env, pedir, ahora) {
+  const lista = (await leerSuscripciones(env)).filter(s => enCuyo(s.lat, s.lon));
+  const lugares = PUNTOS_ZONDA.map(([nombre, lat, lon]) => ({ nombre, lat, lon })).concat(lista.map(s => ({ nombre: "cel", lat: s.lat, lon: s.lon })));
+  const datos = await pronosticoZonda(lugares, pedir);
+  const puntos = PUNTOS_ZONDA.map(([nombre, lat, lon], i) => ({ nombre, lat, lon, z: zondaEn(datos[i], ahora) }));
+  const estados = (await env.MI_CLIMA.get("zondaEstados", "json")) || {};
+  const enviados = [], borrar = [];
+  for (let k = 0; k < lista.length; k++) {
+    const s = lista[k];
+    const { aviso, est } = decidirZonda(s, zondaEn(datos[PUNTOS_ZONDA.length + k], ahora), puntos, estados[s.id], ahora);
+    estados[s.id] = est;
+    if (aviso) {
+      await env.MI_CLIMA.put("aviso:" + s.id, JSON.stringify({ titulo: aviso.titulo, cuerpo: aviso.cuerpo, t: ahora }), { expirationTtl: 3600 });
+      const estado = await enviarAviso(env, s.endpoint);
+      if (estado === 404 || estado === 410) borrar.push(s.id);
+      enviados.push({ titulo: aviso.titulo, estado });
+    }
+  }
+  for (const id of Object.keys(estados)) if (!lista.some(s => s.id === id)) delete estados[id];
+  await env.MI_CLIMA.put("zondaEstados", JSON.stringify(estados));
+  const resumen = { revisado: ahora, puntos: puntos.filter(p => p.z).map(p => ({ nombre: p.nombre, soplando: p.z.ahora, desde: p.z.desde, rafagas: Math.round(p.z.raf), direccion: direccion(p.z.dir) })), celulares: lista.length, enviados };
+  await env.MI_CLIMA.put("zondaResumen", JSON.stringify(resumen));
+  return resumen;
+}
+
 // ---------- Avisos oficiales del SMN (feed CAP) ----------
 const SMN_FEED = "https://ssl.smn.gob.ar/CAP/AR.php";
 const SMN_DETALLE = /^https:\/\/ssl\.smn\.gob\.ar\/feeds\/[A-Za-z0-9_\/.-]+\.xml$/;
@@ -602,9 +728,13 @@ export default {
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
 
     if (request.method === "GET" || request.method === "HEAD") {
-      if (url.pathname === "/") return texto("Mi Clima: intermediario funcionando (versión 6)" + (env.MI_CLIMA ? " · avisos listos" : " · falta conectar el KV MI_CLIMA") + (env.CODIGO ? " · con código de invitación" : ""), 200, cors);
+      if (url.pathname === "/") return texto("Mi Clima: intermediario funcionando (versión 7, con avisos de Zonda)" + (env.MI_CLIMA ? " · avisos listos" : " · falta conectar el KV MI_CLIMA") + (env.CODIGO ? " · con código de invitación" : ""), 200, cors);
       if (url.pathname === "/rayos") return rayos(cors);
       if (url.pathname === "/smn") return smn(url, cors);
+      if (url.pathname === "/zonda") {
+        if (!env.MI_CLIMA) return texto("Falta conectar el espacio KV con el nombre MI_CLIMA", 503, cors);
+        return json((await env.MI_CLIMA.get("zondaResumen", "json")) || { revisado: null, nota: "Todavía no se revisó: se hace una vez por hora." }, 200, cors);
+      }
       const ms = url.pathname.match(RUTA_SINARAME);
       if (ms) return imagenSinarame(ms, cors);
       const m = url.pathname.match(RUTA_RADAR);
@@ -637,6 +767,8 @@ export default {
   async scheduled(event, env, ctx) {
     if (!env.MI_CLIMA) return;
     const m = /^\*\/(\d+)\s/.exec((event && event.cron) || "");
-    ctx.waitUntil(revisar(env, event && event.scheduledTime, m ? Number(m[1]) : 5));
+    const intervalo = m ? Number(m[1]) : 5, momento = (event && event.scheduledTime) || Date.now();
+    ctx.waitUntil(revisar(env, momento, intervalo));
+    ctx.waitUntil(revisarZonda(env).catch(() => null)); // el Zonda se revisa una vez por hora
   }
 };
